@@ -13,7 +13,7 @@ define('DB_PASS',   '');               // ← your MySQL password
 define('DB_CHARSET','utf8mb4');
 
 // Optional: site owner email for contact notifications
-define('OWNER_EMAIL', 'karan.oli@example.com');
+define('OWNER_EMAIL', 'chhetrikaran.147@gmail.com');
 
 /**
  * Returns a PDO instance (singleton pattern).

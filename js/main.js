@@ -210,9 +210,9 @@ document.addEventListener('DOMContentLoaded', () => {
       { text: 'Scroll to #projects to see full details.', type: 'response muted' },
     ],
     contact: () => [
-      { text: 'Email:    karan.oli@example.com', type: 'response' },
-      { text: 'GitHub:   github.com/karanoli', type: 'response' },
-      { text: 'LinkedIn: linkedin.com/in/karanoli', type: 'response' },
+      { text: 'Email:    chhetrikaran.147@gmail.com', type: 'response' },
+      { text: 'GitHub:   https://github.com/NotMeFound', type: 'response' },
+      { text: 'LinkedIn: https://www.linkedin.com/in/karan-chhetri-919b803b7', type: 'response' },
       { text: 'Location: Nepal — open to remote', type: 'response' },
     ],
     hire: () => [
@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     github: () => [
       { text: 'Opening GitHub profile...', type: 'response success' },
-      { text: 'https://github.com/karanoli', type: 'response' },
+      { text: 'https://github.com/NotMeFound', type: 'response' },
     ],
     clear: () => '__clear__',
   };
@@ -273,7 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       result.forEach(item => addLine(item.text, item.type.replace('response', '').trim()));
       if (raw === 'github') {
-        window.open('https://github.com/karanoli', '_blank', 'noopener,noreferrer');
+        window.open('https://github.com/NotMeFound', '_blank', 'noopener,noreferrer');
       }
     } else {
       addLine(`Command not found: ${raw}`, 'error');
