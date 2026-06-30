@@ -65,7 +65,7 @@ try {
     // Optional: send notification email to site owner
     // mail(OWNER_EMAIL, 'New portfolio contact: ' . $subject, $message, 'From: ' . $email);
 
-    echo json_encode(['success' => true, 'message' => 'Message received. I will reply within 12 hours.']);
+    echo json_encode(['success' => true, 'message' => 'Message received. I will reply within 24 hours.']);
 
 } catch (PDOException $e) {
     // Log error server-side, never expose to client
