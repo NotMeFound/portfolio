@@ -7,7 +7,7 @@
  *  - Skill bars animated via IntersectionObserver
  *  - Project tag filter
  *  - Interactive terminal widget
- *  - AJAX contact form submission
+ *  - AJAX contact form submission with real feedback
  *  - Live visitor counter fetch
  *  - Sticky nav with scroll class
  *  - Mobile hamburger menu
@@ -19,8 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ═══════════════════════════════════
      1. THEME TOGGLE (dark / light)
   ═══════════════════════════════════ */
-  const themeBtn   = document.getElementById('theme-btn');
-  const htmlEl     = document.documentElement;
+  const themeBtn = document.getElementById('theme-btn');
+  const htmlEl = document.documentElement;
+  const themeIcon = document.getElementById('theme-icon');
 
   const savedTheme = localStorage.getItem('ko-theme') || 'dark';
   applyTheme(savedTheme);
@@ -34,50 +35,54 @@ document.addEventListener('DOMContentLoaded', () => {
   function applyTheme(theme) {
     htmlEl.setAttribute('data-theme', theme);
     document.body.setAttribute('data-theme', theme);
+    if (themeIcon) {
+      themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
+    }
   }
-
 
   /* ═══════════════════════════════════
      2. VIEW MODE TOGGLE (recruiter / engineer)
   ═══════════════════════════════════ */
   const viewToggle = document.getElementById('view-toggle');
-  const viewLabel  = document.getElementById('view-label');
-  const qsBanner   = document.getElementById('quickscan-banner');
-  let   isQuick    = false;
+  const viewLabel = document.getElementById('view-label');
+  const qsBanner = document.getElementById('quickscan-banner');
+  let isQuick = false;
 
-  viewToggle.addEventListener('click', () => {
-    isQuick = !isQuick;
-    document.body.classList.toggle('quickscan-mode', isQuick);
-    qsBanner.classList.toggle('active', isQuick);
-    viewToggle.classList.toggle('active', isQuick);
-    viewLabel.textContent = isQuick ? 'Deep Dive' : 'Quick Scan';
-  });
-
+  if (viewToggle) {
+    viewToggle.addEventListener('click', () => {
+      isQuick = !isQuick;
+      document.body.classList.toggle('quickscan-mode', isQuick);
+      if (qsBanner) qsBanner.classList.toggle('active', isQuick);
+      viewToggle.classList.toggle('active', isQuick);
+      if (viewLabel) viewLabel.textContent = isQuick ? 'Deep Dive' : 'Quick Scan';
+    });
+  }
 
   /* ═══════════════════════════════════
      3. STICKY NAV ON SCROLL
   ═══════════════════════════════════ */
   const navHeader = document.getElementById('nav-header');
   window.addEventListener('scroll', () => {
-    navHeader.classList.toggle('scrolled', window.scrollY > 40);
+    if (navHeader) {
+      navHeader.classList.toggle('scrolled', window.scrollY > 40);
+    }
   }, { passive: true });
-
 
   /* ═══════════════════════════════════
      4. MOBILE HAMBURGER
   ═══════════════════════════════════ */
-  const hamburger  = document.getElementById('hamburger');
+  const hamburger = document.getElementById('hamburger');
   const mobileMenu = document.getElementById('mobile-menu');
 
-  hamburger.addEventListener('click', () => {
-    mobileMenu.classList.toggle('open');
-  });
+  if (hamburger && mobileMenu) {
+    hamburger.addEventListener('click', () => {
+      mobileMenu.classList.toggle('open');
+    });
 
-  // Close on any mobile link tap
-  mobileMenu.querySelectorAll('a').forEach(a => {
-    a.addEventListener('click', () => mobileMenu.classList.remove('open'));
-  });
-
+    mobileMenu.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => mobileMenu.classList.remove('open'));
+    });
+  }
 
   /* ═══════════════════════════════════
      5. TYPEWRITER EFFECT (hero)
@@ -89,49 +94,55 @@ document.addEventListener('DOMContentLoaded', () => {
     'BCA Graduate',
     'Open to Work',
   ];
-  const typedEl  = document.getElementById('typed-text');
-  let roleIdx    = 0;
-  let charIdx    = 0;
-  let deleting   = false;
+  const typedEl = document.getElementById('typed-text');
+  let roleIdx = 0;
+  let charIdx = 0;
+  let deleting = false;
 
-  function type() {
-    const current = roles[roleIdx];
-    if (!deleting) {
-      typedEl.textContent = current.substring(0, charIdx + 1);
-      charIdx++;
-      if (charIdx === current.length) {
-        deleting = true;
-        setTimeout(type, 1800);
-        return;
+  if (typedEl) {
+    function type() {
+      const current = roles[roleIdx];
+      if (!deleting) {
+        typedEl.textContent = current.substring(0, charIdx + 1);
+        charIdx++;
+        if (charIdx === current.length) {
+          deleting = true;
+          setTimeout(type, 1800);
+          return;
+        }
+      } else {
+        typedEl.textContent = current.substring(0, charIdx - 1);
+        charIdx--;
+        if (charIdx === 0) {
+          deleting = false;
+          roleIdx = (roleIdx + 1) % roles.length;
+        }
       }
-    } else {
-      typedEl.textContent = current.substring(0, charIdx - 1);
-      charIdx--;
-      if (charIdx === 0) {
-        deleting  = false;
-        roleIdx   = (roleIdx + 1) % roles.length;
-      }
+      setTimeout(type, deleting ? 60 : 100);
     }
-    setTimeout(type, deleting ? 60 : 100);
+    type();
   }
-  type();
-
 
   /* ═══════════════════════════════════
      6. SKILL BARS (IntersectionObserver)
   ═══════════════════════════════════ */
   const fills = document.querySelectorAll('.skill-fill');
-  const skillObs = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.style.width = entry.target.dataset.level + '%';
-        skillObs.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.4 });
+  if (fills.length) {
+    const skillObs = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const target = entry.target;
+          const level = target.dataset.level;
+          if (level) {
+            target.style.width = level + '%';
+          }
+          skillObs.unobserve(target);
+        }
+      });
+    }, { threshold: 0.4 });
 
-  fills.forEach(fill => skillObs.observe(fill));
-
+    fills.forEach(fill => skillObs.observe(fill));
+  }
 
   /* ═══════════════════════════════════
      7. PROJECT TAG FILTER
@@ -139,35 +150,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const filterBtns = document.querySelectorAll('.filter-btn');
   const projectCards = document.querySelectorAll('.project-card');
 
-  filterBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      filterBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+  if (filterBtns.length && projectCards.length) {
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
 
-      const tag = btn.dataset.tag;
-      projectCards.forEach(card => {
-        const matches = tag === 'all' || card.dataset.tags.includes(tag);
-        card.style.display = matches ? '' : 'none';
+        const tag = btn.dataset.tag;
+        projectCards.forEach(card => {
+          const matches = tag === 'all' || card.dataset.tags.includes(tag);
+          card.style.display = matches ? '' : 'none';
+        });
       });
     });
-  });
 
-  // Pre-fill contact subject when "Discuss this project →" is clicked
-  document.querySelectorAll('.proj-discuss').forEach(link => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      const title   = link.closest('.project-card').querySelector('.project-title').textContent;
-      const subject = document.getElementById('subject');
-      if (subject) subject.value = `Discussing your project: ${title}`;
-      document.getElementById('contact').scrollIntoView({ behavior: 'smooth' });
+    // Pre-fill contact subject when "Discuss this project →" is clicked
+    document.querySelectorAll('.proj-discuss').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const card = link.closest('.project-card');
+        const title = card?.querySelector('.project-title')?.textContent || 'Project';
+        const subject = document.getElementById('contact-subject');
+        if (subject) subject.value = `Discussing your project: ${title}`;
+        document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
+      });
     });
-  });
-
+  }
 
   /* ═══════════════════════════════════
      8. TERMINAL WIDGET
   ═══════════════════════════════════ */
-  const termInput  = document.getElementById('terminal-input');
+  const termInput = document.getElementById('terminal-input');
   const termOutput = document.getElementById('terminal-output');
 
   const COMMANDS = {
@@ -232,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     github: () => [
       { text: 'Opening GitHub profile...', type: 'response success' },
-      { text: 'https://github.com/karanoli', type: 'response' },
+      { text: 'https://github.com/NotMeFound', type: 'response' },
     ],
     clear: () => '__clear__',
   };
@@ -241,242 +254,150 @@ document.addEventListener('DOMContentLoaded', () => {
     const p = document.createElement('p');
     p.className = 't-response ' + classes;
     p.textContent = content;
-    termOutput.appendChild(p);
-    termOutput.scrollTop = termOutput.scrollHeight;
+    if (termOutput) {
+      termOutput.appendChild(p);
+      termOutput.scrollTop = termOutput.scrollHeight;
+    }
   }
 
   function addCommandLine(cmd) {
     const p = document.createElement('p');
     p.className = 't-line';
     p.innerHTML = `<span class="t-prompt">$</span> <span class="t-cmd">${escHtml(cmd)}</span>`;
-    termOutput.appendChild(p);
+    if (termOutput) {
+      termOutput.appendChild(p);
+    }
   }
 
   function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  termInput.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    const raw = termInput.value.trim().toLowerCase();
-    termInput.value = '';
-    if (!raw) return;
+  if (termInput && termOutput) {
+    termInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const raw = termInput.value.trim().toLowerCase();
+      termInput.value = '';
+      if (!raw) return;
 
-    addCommandLine(raw);
+      addCommandLine(raw);
 
-    if (COMMANDS[raw]) {
-      const result = COMMANDS[raw]();
-      if (result === '__clear__') {
-        termOutput.innerHTML = '';
-        addLine('Terminal cleared. Type help for commands.', 'muted');
-        return;
+      if (COMMANDS[raw]) {
+        const result = COMMANDS[raw]();
+        if (result === '__clear__') {
+          termOutput.innerHTML = '';
+          addLine('Terminal cleared. Type help for commands.', 'muted');
+          return;
+        }
+        result.forEach(item => {
+          const type = item.type || 'response';
+          addLine(item.text, type.replace('response', '').trim());
+        });
+        if (raw === 'github') {
+          window.open('https://github.com/NotMeFound', '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        addLine(`Command not found: ${raw}`, 'error');
+        addLine('Type help to see available commands.', 'muted');
       }
-      result.forEach(item => addLine(item.text, item.type.replace('response', '').trim()));
-      if (raw === 'github') {
-        window.open('https://github.com/karanoli', '_blank', 'noopener,noreferrer');
-      }
-    } else {
-      addLine(`Command not found: ${raw}`, 'error');
-      addLine('Type help to see available commands.', 'muted');
-    }
-  });
+    });
+  }
 
-
-  /* ═══════════════════════════════════
   /* ═══════════════════════════════════
      9. CONTACT FORM - Production Ready
   ═══════════════════════════════════ */
   const form = document.getElementById('contact-form');
   const statusEl = document.getElementById('form-status');
   const submitBtn = document.getElementById('submit-btn');
-  const btnText = submitBtn.querySelector('.btn-text');
-  const btnLoading = submitBtn.querySelector('.btn-loading');
+  const btnText = submitBtn?.querySelector('.btn-text');
+  const btnLoading = submitBtn?.querySelector('.btn-loading');
 
-  // ── Field validation helpers ──────────────────────────────────
-  function validateField(field) {
-    const value = field.value.trim();
-    const errorEl = document.querySelector(`[data-field="${field.name}"]`);
-    let isValid = true;
-    let errorMsg = '';
+  if (form) {
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
 
-    // Reset error state
-    field.classList.remove('error');
-    if (errorEl) errorEl.textContent = '';
+      // Get form data
+      const formData = new FormData(this);
+      
+      // Simple validation
+      const name = formData.get('name')?.trim() || '';
+      const email = formData.get('email')?.trim() || '';
+      const subject = formData.get('subject')?.trim() || '';
+      const message = formData.get('message')?.trim() || '';
 
-    switch (field.name) {
-      case 'name':
-        if (!value) {
-          errorMsg = 'Name is required.';
-          isValid = false;
-        } else if (value.length < 2) {
-          errorMsg = 'Name must be at least 2 characters.';
-          isValid = false;
-        } else if (value.length > 100) {
-          errorMsg = 'Name cannot exceed 100 characters.';
-          isValid = false;
+      if (!name || name.length < 2) {
+        showStatus('Please enter your name (minimum 2 characters).', 'error');
+        return;
+      }
+
+      if (!email || !email.includes('@') || !email.includes('.')) {
+        showStatus('Please enter a valid email address.', 'error');
+        return;
+      }
+
+      if (!subject || subject.length < 2) {
+        showStatus('Please enter a subject (minimum 2 characters).', 'error');
+        return;
+      }
+
+      if (!message || message.length < 10) {
+        showStatus('Please enter a message (minimum 10 characters).', 'error');
+        return;
+      }
+
+      // Show loading state
+      if (submitBtn) submitBtn.disabled = true;
+      if (btnText) btnText.hidden = true;
+      if (btnLoading) btnLoading.hidden = false;
+      
+      hideStatus();
+
+      try {
+        const response = await fetch('php/send-message.php', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          showStatus(result.message || 'Message sent successfully! 🎉', 'success');
+          this.reset();
+          // Reset pre-filled subject if any
+          const subjectField = document.getElementById('contact-subject');
+          if (subjectField) subjectField.value = '';
+        } else {
+          if (response.status === 429) {
+            showStatus('Too many messages. Please wait an hour before sending again.', 'error');
+          } else {
+            showStatus(result.error || 'Failed to send message. Please try again.', 'error');
+          }
         }
-        break;
-
-      case 'email':
-        if (!value) {
-          errorMsg = 'Email is required.';
-          isValid = false;
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-          errorMsg = 'Please enter a valid email address.';
-          isValid = false;
-        } else if (value.length > 100) {
-          errorMsg = 'Email cannot exceed 100 characters.';
-          isValid = false;
-        }
-        break;
-
-      case 'subject':
-        if (!value) {
-          errorMsg = 'Subject is required.';
-          isValid = false;
-        } else if (value.length < 2) {
-          errorMsg = 'Subject must be at least 2 characters.';
-          isValid = false;
-        } else if (value.length > 200) {
-          errorMsg = 'Subject cannot exceed 200 characters.';
-          isValid = false;
-        }
-        break;
-
-      case 'message':
-        if (!value) {
-          errorMsg = 'Message is required.';
-          isValid = false;
-        } else if (value.length < 10) {
-          errorMsg = 'Message must be at least 10 characters.';
-          isValid = false;
-        } else if (value.length > 5000) {
-          errorMsg = 'Message cannot exceed 5000 characters.';
-          isValid = false;
-        }
-        break;
-    }
-
-    if (!isValid && errorEl) {
-      field.classList.add('error');
-      errorEl.textContent = errorMsg;
-    }
-
-    return isValid;
+      } catch (error) {
+        console.error('Contact form error:', error);
+        showStatus('Network error. Please check your connection and try again.', 'error');
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+        if (btnText) btnText.hidden = false;
+        if (btnLoading) btnLoading.hidden = true;
+      }
+    });
   }
 
-  // ── Real-time validation on blur ─────────────────────────────
-  form.querySelectorAll('input, textarea').forEach(field => {
-    field.addEventListener('blur', () => validateField(field));
-    field.addEventListener('input', () => {
-      // Clear error on input if valid
-      if (field.classList.contains('error') && validateField(field)) {
-        field.classList.remove('error');
-        const errorEl = document.querySelector(`[data-field="${field.name}"]`);
-        if (errorEl) errorEl.textContent = '';
-      }
-    });
-  });
-
-  // ── Form submission ──────────────────────────────────────────
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    // ── Validate all fields ────────────────────────────────────
-    let allValid = true;
-    const fields = form.querySelectorAll('input, textarea');
-    fields.forEach(field => {
-      if (!validateField(field)) {
-        allValid = false;
-        field.focus();
-      }
-    });
-
-    if (!allValid) {
-      showStatus('Please fix all errors before submitting.', 'error');
-      return;
-    }
-
-    // ── Get form data ──────────────────────────────────────────
-    const formData = new FormData(form);
-    const data = {
-      name: formData.get('name').trim(),
-      email: formData.get('email').trim(),
-      subject: formData.get('subject').trim(),
-      message: formData.get('message').trim()
-    };
-
-    // ── Show loading state ─────────────────────────────────────
-    submitBtn.disabled = true;
-    btnText.hidden = true;
-    btnLoading.hidden = false;
-    hideStatus();
-
-    try {
-      // Determine which backend to use
-      const useWeb3Forms = false; // Set to true for Web3Forms, false for PHP
-      let endpoint;
-      let body;
-
-      if (useWeb3Forms) {
-        // ── Option 1: Web3Forms (No backend required) ──────────
-        endpoint = 'https://api.web3forms.com/submit';
-        body = new FormData();
-        body.append('access_key', 'YOUR_WEB3FORMS_ACCESS_KEY'); // Get from web3forms.com
-        body.append('name', data.name);
-        body.append('email', data.email);
-        body.append('subject', data.subject);
-        body.append('message', data.message);
-      } else {
-        // ── Option 2: PHP Backend ──────────────────────────────
-        endpoint = 'php/send-message.php';
-        body = formData; // Use FormData for file uploads if needed
-      }
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        body: body
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.success) {
-        showStatus(result.message || 'Message sent successfully! 🎉', 'success');
-        form.reset();
-        // Reset project pre-filled subject
-        const subjectField = document.getElementById('contact-subject');
-        if (subjectField) subjectField.value = '';
-      } else {
-        // Handle specific error responses
-        if (response.status === 429) {
-          showStatus('Too many messages. Please wait an hour before sending again.', 'error');
-        } else if (response.status === 422) {
-          showStatus(result.error || 'Please check your input and try again.', 'error');
-        } else {
-          showStatus(result.error || 'Failed to send message. Please try again.', 'error');
-        }
-      }
-    } catch (error) {
-      console.error('Contact form error:', error);
-      showStatus('Network error. Please check your connection and try again.', 'error');
-    } finally {
-      submitBtn.disabled = false;
-      btnText.hidden = false;
-      btnLoading.hidden = true;
-    }
-  });
-
   function showStatus(msg, type) {
-    statusEl.textContent = msg;
-    statusEl.className = 'form-status ' + type;
-    statusEl.hidden = false;
+    if (statusEl) {
+      statusEl.textContent = msg;
+      statusEl.className = 'form-status ' + type;
+      statusEl.hidden = false;
+    }
   }
 
   function hideStatus() {
-    statusEl.hidden = true;
-    statusEl.className = 'form-status';
+    if (statusEl) {
+      statusEl.hidden = true;
+      statusEl.className = 'form-status';
+    }
   }
-
 
   /* ═══════════════════════════════════
      10. VISITOR COUNTER
@@ -485,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadVisitorCount() {
     try {
-      const res  = await fetch('php/visitor.php');
+      const res = await fetch('php/visitor.php');
       const json = await res.json();
       if (json.visitors !== undefined) {
         animateCounter(counterEl, 0, json.visitors, 1000);
@@ -497,10 +418,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function animateCounter(el, from, to, duration) {
+    if (!el) return;
     const start = performance.now();
     function step(now) {
       const progress = Math.min((now - start) / duration, 1);
-      const value    = Math.round(from + (to - from) * easeOut(progress));
+      const value = Math.round(from + (to - from) * easeOut(progress));
       el.textContent = value.toLocaleString();
       if (progress < 1) requestAnimationFrame(step);
     }
@@ -510,7 +432,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
   loadVisitorCount();
-
 
   /* ═══════════════════════════════════
      11. SMOOTH SCROLL FOR ALL ANCHOR LINKS
