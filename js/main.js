@@ -1,17 +1,6 @@
 /**
  * KARAN OLI PORTFOLIO — main.js
- * Features:
- *  - Dark/light theme toggle (persisted to localStorage)
- *  - Recruiter "Quick Scan" / Engineer "Deep Dive" mode toggle
- *  - Typewriter hero text effect
- *  - Skill bars animated via IntersectionObserver
- *  - Project tag filter
- *  - Interactive terminal widget
- *  - AJAX contact form submission with real feedback
- *  - Live visitor counter fetch
- *  - Sticky nav with scroll class
- *  - Mobile hamburger menu
- *  - Smooth scroll for anchor links
+ * Complete production-ready JavaScript
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -41,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     2. VIEW MODE TOGGLE (recruiter / engineer)
+     2. VIEW MODE TOGGLE
   ═══════════════════════════════════ */
   const viewToggle = document.getElementById('view-toggle');
   const viewLabel = document.getElementById('view-label');
@@ -59,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     3. STICKY NAV ON SCROLL
+     3. STICKY NAV
   ═══════════════════════════════════ */
   const navHeader = document.getElementById('nav-header');
   window.addEventListener('scroll', () => {
@@ -85,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     5. TYPEWRITER EFFECT (hero)
+     5. TYPEWRITER EFFECT
   ═══════════════════════════════════ */
   const roles = [
     'Full-Stack Developer',
@@ -124,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     6. SKILL BARS (IntersectionObserver)
+     6. SKILL BARS
   ═══════════════════════════════════ */
   const fills = document.querySelectorAll('.skill-fill');
   if (fills.length) {
@@ -145,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     7. PROJECT TAG FILTER
+     7. PROJECT FILTER
   ═══════════════════════════════════ */
   const filterBtns = document.querySelectorAll('.filter-btn');
   const projectCards = document.querySelectorAll('.project-card');
@@ -164,7 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Pre-fill contact subject when "Discuss this project →" is clicked
     document.querySelectorAll('.proj-discuss').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
@@ -225,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     contact: () => [
       { text: 'Email:    chhetrikaran.147@gmail.com', type: 'response' },
       { text: 'GitHub:   https://github.com/NotMeFound', type: 'response' },
-      { text: 'LinkedIn: https://www.linkedin.com/in/karan-chhetri-919b803b7', type: 'response' },
+      { text: 'https://www.linkedin.com/in/karan-chhetri-919b803b7', type: 'response' },
       { text: 'Location: Nepal — open to remote', type: 'response' },
     ],
     hire: () => [
@@ -245,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     github: () => [
       { text: 'Opening GitHub profile...', type: 'response success' },
-      { text: 'https://github.com/NotMeFound', type: 'response' },
+      { text: 'https://github.com/karanoli', type: 'response' },
     ],
     clear: () => '__clear__',
   };
@@ -313,6 +301,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLoading = submitBtn?.querySelector('.btn-loading');
 
   if (form) {
+    // Real-time validation on input
+    const inputs = form.querySelectorAll('input, textarea');
+    inputs.forEach(input => {
+      input.addEventListener('input', function() {
+        if (this.value.trim().length > 0) {
+          this.classList.remove('error');
+          const errorEl = this.parentElement.querySelector('.field-error');
+          if (errorEl) errorEl.textContent = '';
+        }
+      });
+    });
+
     form.addEventListener('submit', async function(e) {
       e.preventDefault();
 
@@ -325,23 +325,33 @@ document.addEventListener('DOMContentLoaded', () => {
       const subject = formData.get('subject')?.trim() || '';
       const message = formData.get('message')?.trim() || '';
 
+      // Reset errors
+      inputs.forEach(input => input.classList.remove('error'));
+      
+      let hasError = false;
+
       if (!name || name.length < 2) {
-        showStatus('Please enter your name (minimum 2 characters).', 'error');
-        return;
+        showFieldError('name', 'Please enter your name (minimum 2 characters).');
+        hasError = true;
       }
 
       if (!email || !email.includes('@') || !email.includes('.')) {
-        showStatus('Please enter a valid email address.', 'error');
-        return;
+        showFieldError('email', 'Please enter a valid email address.');
+        hasError = true;
       }
 
       if (!subject || subject.length < 2) {
-        showStatus('Please enter a subject (minimum 2 characters).', 'error');
-        return;
+        showFieldError('subject', 'Please enter a subject (minimum 2 characters).');
+        hasError = true;
       }
 
       if (!message || message.length < 10) {
-        showStatus('Please enter a message (minimum 10 characters).', 'error');
+        showFieldError('message', 'Please enter a message (minimum 10 characters).');
+        hasError = true;
+      }
+
+      if (hasError) {
+        showStatus('Please fix all errors before submitting.', 'error');
         return;
       }
 
@@ -353,29 +363,41 @@ document.addEventListener('DOMContentLoaded', () => {
       hideStatus();
 
       try {
+        // Use fetch with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
         const response = await fetch('php/send-message.php', {
           method: 'POST',
-          body: formData
+          body: formData,
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         const result = await response.json();
 
         if (response.ok && result.success) {
           showStatus(result.message || 'Message sent successfully! 🎉', 'success');
           this.reset();
-          // Reset pre-filled subject if any
           const subjectField = document.getElementById('contact-subject');
           if (subjectField) subjectField.value = '';
         } else {
           if (response.status === 429) {
             showStatus('Too many messages. Please wait an hour before sending again.', 'error');
+          } else if (response.status === 422) {
+            showStatus(result.error || 'Please check your input and try again.', 'error');
           } else {
             showStatus(result.error || 'Failed to send message. Please try again.', 'error');
           }
         }
       } catch (error) {
         console.error('Contact form error:', error);
-        showStatus('Network error. Please check your connection and try again.', 'error');
+        if (error.name === 'AbortError') {
+          showStatus('Request timed out. Please check your connection and try again.', 'error');
+        } else {
+          showStatus('Network error. Please check your connection and try again.', 'error');
+        }
       } finally {
         if (submitBtn) submitBtn.disabled = false;
         if (btnText) btnText.hidden = false;
@@ -384,11 +406,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function showFieldError(fieldName, message) {
+    const field = document.querySelector(`[name="${fieldName}"]`);
+    if (field) {
+      field.classList.add('error');
+      const errorEl = field.parentElement.querySelector('.field-error');
+      if (errorEl) errorEl.textContent = message;
+    }
+  }
+
   function showStatus(msg, type) {
     if (statusEl) {
       statusEl.textContent = msg;
       statusEl.className = 'form-status ' + type;
       statusEl.hidden = false;
+      if (type === 'success') {
+        setTimeout(() => {
+          if (statusEl) statusEl.hidden = true;
+        }, 5000);
+      }
     }
   }
 
@@ -412,7 +448,6 @@ document.addEventListener('DOMContentLoaded', () => {
         animateCounter(counterEl, 0, json.visitors, 1000);
       }
     } catch {
-      // Static fallback if PHP not available
       animateCounter(counterEl, 0, 247, 1000);
     }
   }
@@ -434,7 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadVisitorCount();
 
   /* ═══════════════════════════════════
-     11. SMOOTH SCROLL FOR ALL ANCHOR LINKS
+     11. SMOOTH SCROLL
   ═══════════════════════════════════ */
   document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', (e) => {
