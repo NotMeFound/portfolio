@@ -29,7 +29,7 @@ if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > 
 $_SESSION['last_activity'] = time();
 
 // ============================================
-// CSRF TOKEN FUNCTIONS
+// CSRF TOKEN FUNCTIONS - FIXED
 // ============================================
 function generate_csrf_token() {
     if (empty($_SESSION['csrf_token'])) {
@@ -42,7 +42,7 @@ function verify_csrf_token($token) {
     if (empty($_SESSION['csrf_token']) || empty($token)) {
         return false;
     }
-    return hash_equals($_SESSION['csrf_token'], $token);
+    return $_SESSION['csrf_token'] === $token;
 }
 
 // ============================================
@@ -92,7 +92,7 @@ function validate_url($url) {
 }
 
 // ============================================
-// PASSWORD HASH - REPLACE THIS!
+// PASSWORD HASH - REPLACE THIS
 // Generate using: echo password_hash('your_password', PASSWORD_ARGON2ID);
 // ============================================
 define('ADMIN_PASSWORD_HASH', '$2a$12$piqX7yCf5Qto99KVO7hV.ec4bTzHuE/p4CvxsPC20hp4QthD0y/Ji'); // ← CHANGE THIS!
@@ -109,10 +109,7 @@ $error = '';
 $statusMsg = '';
 $statusType = '';
 $projects = [];
-$messages = [];
-$unread_count = 0;
-$visitors_today = 0;
-$visitors_total = 0;
+$visitors = 0;
 $projCount = 0;
 
 // ============================================
@@ -121,23 +118,17 @@ $projCount = 0;
 if (isset($_POST['action']) && $_POST['action'] === 'login') {
     if (!check_rate_limit('login', 5, 900)) {
         $error = 'Too many login attempts. Please wait 15 minutes.';
-        error_log("Admin login rate limit exceeded from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
     } else {
         $password = sanitize_input($_POST['password'] ?? '');
         
         if (password_verify($password, ADMIN_PASSWORD_HASH)) {
-            // Clear rate limit on success
             unset($_SESSION['rate_limit']['login_' . ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0')]);
-            
-            // Regenerate session ID for security
             session_regenerate_id(true);
             
-            // Set session variables
             $_SESSION['admin_logged_in'] = true;
             $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
             $_SESSION['ip_address'] = $_SERVER['REMOTE_ADDR'] ?? '';
             $_SESSION['login_time'] = time();
-            $_SESSION['login_id'] = bin2hex(random_bytes(16));
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             
             error_log("Admin login successful from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
@@ -155,10 +146,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'login') {
 // ============================================
 if (isset($_POST['action']) && $_POST['action'] === 'logout') {
     if (verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        // Clear all session data
         $_SESSION = array();
         
-        // Delete session cookie
         if (ini_get("session.use_cookies")) {
             $params = session_get_cookie_params();
             setcookie(session_name(), '', time() - 42000,
@@ -180,25 +169,17 @@ function is_authenticated() {
         return false;
     }
     
-    // Validate user agent
     $user_agent = $_SESSION['user_agent'] ?? '';
-    $current_ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    if ($user_agent !== $current_ua) {
-        session_unset();
-        session_destroy();
-        return false;
-    }
-    
-    // Validate IP (optional - comment out if IP changes frequently)
     $ip_address = $_SESSION['ip_address'] ?? '';
+    $current_ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
     $current_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-    if ($ip_address !== $current_ip) {
+    
+    if ($user_agent !== $current_ua || $ip_address !== $current_ip) {
         session_unset();
         session_destroy();
         return false;
     }
     
-    // Check session timeout
     if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 3600)) {
         session_unset();
         session_destroy();
@@ -220,52 +201,12 @@ if (is_authenticated()) {
     }
     
     // ============================================
-    // HANDLE POST REQUESTS (AJAX + Form)
+    // HANDLE POST REQUESTS
     // ============================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $action = $_POST['action'];
         
-        // ============================================
-        // HANDLE MARK AS READ (AJAX)
-        // ============================================
-        if ($action === 'mark_read') {
-            if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-                echo json_encode(['success' => false, 'error' => 'CSRF validation failed']);
-                exit;
-            }
-            $id = filter_var($_POST['id'] ?? 0, FILTER_VALIDATE_INT);
-            if ($id > 0) {
-                $stmt = $pdo->prepare("UPDATE contacts SET is_read = 1 WHERE id = ? AND is_read = 0");
-                $stmt->execute([$id]);
-                if ($stmt->rowCount() > 0) {
-                    echo json_encode(['success' => true]);
-                } else {
-                    echo json_encode(['success' => false, 'error' => 'Message not found or already read']);
-                }
-                exit;
-            }
-            echo json_encode(['success' => false]);
-            exit;
-        }
-        
-        // ============================================
-        // HANDLE MARK ALL READ (AJAX)
-        // ============================================
-        if ($action === 'mark_all_read') {
-            if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-                echo json_encode(['success' => false, 'error' => 'CSRF validation failed']);
-                exit;
-            }
-            $stmt = $pdo->prepare("UPDATE contacts SET is_read = 1 WHERE is_read = 0");
-            $stmt->execute();
-            echo json_encode(['success' => true, 'count' => $stmt->rowCount()]);
-            exit;
-        }
-        
-        // ============================================
-        // CSRF CHECK FOR FORM ACTIONS
-        // ============================================
-        if ($action !== 'login' && $action !== 'mark_read' && $action !== 'mark_all_read') {
+        if ($action !== 'login') {
             if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
                 $statusMsg = 'Security validation failed. Please refresh the page and try again.';
                 $statusType = 'error';
@@ -291,7 +232,6 @@ if (is_authenticated()) {
                 $icon = sanitize_input($_POST['icon'] ?? '🛠️');
                 $sort_order = filter_var($_POST['sort_order'] ?? 10, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 999]]) ?: 10;
                 
-                // Validate URLs
                 if (!empty($github_url) && !validate_url($github_url)) {
                     $statusMsg = 'Invalid GitHub URL format.';
                     $statusType = 'error';
@@ -299,27 +239,21 @@ if (is_authenticated()) {
                     $statusMsg = 'Invalid Demo URL format.';
                     $statusType = 'error';
                 } else {
-                    try {
-                        $stmt = $pdo->prepare("INSERT INTO projects (title, description, tags, github_url, demo_url, icon, sort_order)
-                                                VALUES (?, ?, ?, ?, ?, ?, ?)");
-                        $stmt->execute([
-                            $title,
-                            $description,
-                            $tags,
-                            $github_url,
-                            $demo_url,
-                            $icon,
-                            $sort_order
-                        ]);
-                        
-                        $statusMsg = 'Project added successfully!';
-                        $statusType = 'success';
-                        error_log("Project added: '$title' by admin from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
-                    } catch (PDOException $e) {
-                        error_log("Add project failed: " . $e->getMessage());
-                        $statusMsg = 'Failed to add project. Please try again.';
-                        $statusType = 'error';
-                    }
+                    $stmt = $pdo->prepare("INSERT INTO projects (title, description, tags, github_url, demo_url, icon, sort_order)
+                                            VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([
+                        $title,
+                        $description,
+                        $tags,
+                        $github_url,
+                        $demo_url,
+                        $icon,
+                        $sort_order
+                    ]);
+                    
+                    $statusMsg = 'Project added successfully!';
+                    $statusType = 'success';
+                    error_log("Project added: '$title' by admin");
                 }
             }
         }
@@ -331,24 +265,18 @@ if (is_authenticated()) {
             $id = filter_var($_POST['id'] ?? 0, FILTER_VALIDATE_INT);
             
             if ($id > 0) {
-                try {
-                    $stmt = $pdo->prepare("SELECT title FROM projects WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT title FROM projects WHERE id = ?");
+                $stmt->execute([$id]);
+                $project = $stmt->fetch();
+                
+                if ($project) {
+                    $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ?");
                     $stmt->execute([$id]);
-                    $project = $stmt->fetch();
-                    
-                    if ($project) {
-                        $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ?");
-                        $stmt->execute([$id]);
-                        $statusMsg = 'Project deleted successfully.';
-                        $statusType = 'success';
-                        error_log("Project deleted: '" . $project['title'] . "' (ID: $id) by admin from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
-                    } else {
-                        $statusMsg = 'Project not found.';
-                        $statusType = 'error';
-                    }
-                } catch (PDOException $e) {
-                    error_log("Delete project failed: " . $e->getMessage());
-                    $statusMsg = 'Failed to delete project. Please try again.';
+                    $statusMsg = 'Project deleted successfully.';
+                    $statusType = 'success';
+                    error_log("Project deleted: '" . $project['title'] . "' (ID: $id) by admin");
+                } else {
+                    $statusMsg = 'Project not found.';
                     $statusType = 'error';
                 }
             } else {
@@ -364,40 +292,9 @@ if (is_authenticated()) {
     // FETCH DATA
     // ============================================
     try {
-        // Projects
         $projects = $pdo->query("SELECT * FROM projects ORDER BY sort_order ASC LIMIT 100")->fetchAll();
+        $visitors = (int) $pdo->query("SELECT COUNT(*) FROM visitors")->fetchColumn();
         $projCount = count($projects);
-        
-        // Messages
-        $stmt = $pdo->prepare("
-            SELECT id, name, email, subject, message, is_read, submitted_at 
-            FROM contacts 
-            ORDER BY id DESC 
-            LIMIT 50
-        ");
-        $stmt->execute();
-        $messages = $stmt->fetchAll();
-        
-        // Unread count
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM contacts WHERE is_read = 0");
-        $stmt->execute();
-        $unread_count = (int)$stmt->fetchColumn();
-        
-        // Visitors - today
-        $today = date('Y-m-d');
-        $stmt = $pdo->prepare("
-            SELECT COUNT(DISTINCT visitor_id) 
-            FROM visitors 
-            WHERE DATE(visited_at) = ?
-        ");
-        $stmt->execute([$today]);
-        $visitors_today = (int)$stmt->fetchColumn();
-        
-        // Visitors - total
-        $stmt = $pdo->prepare("SELECT COUNT(DISTINCT visitor_id) FROM visitors");
-        $stmt->execute();
-        $visitors_total = (int)$stmt->fetchColumn();
-        
     } catch (PDOException $e) {
         error_log("Database query failed: " . $e->getMessage());
         $statusMsg = 'Error loading data. Please refresh the page.';
@@ -434,6 +331,9 @@ $current_date = date('M j, Y');
         a{color:var(--accent);text-decoration:none}
         button{cursor:pointer;font-family:inherit}
 
+        /* ============================================ */
+        /* HEADER / NAVIGATION */
+        /* ============================================ */
         .admin-header{
             background:var(--bg2);border-bottom:1px solid var(--border);
             padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;
@@ -459,7 +359,7 @@ $current_date = date('M j, Y');
         .back-link{font-size:0.85rem;color:var(--text2)}
         .back-link:hover{color:var(--accent)}
 
-        .admin-body{max-width:1200px;margin:0 auto;padding:2rem 1.5rem;display:grid;gap:2rem}
+        .admin-body{max-width:1100px;margin:0 auto;padding:2rem 1.5rem;display:grid;gap:2rem}
 
         .card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.75rem}
         .card-title{font-size:1rem;font-weight:600;margin-bottom:1.5rem;color:var(--accent)}
@@ -494,7 +394,18 @@ $current_date = date('M j, Y');
         .stat-num{display:block;font-size:2rem;font-weight:700;color:var(--accent)}
         .stat-lbl{font-size:0.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;margin-top:0.2rem}
 
-        .live-clock{font-variant-numeric:tabular-nums;letter-spacing:0.05em}
+        /* Live Clock */
+        .live-clock {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.05em;
+        }
+        .seconds-blink {
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
 
         /* Tables */
         .table-wrap{overflow-x:auto}
@@ -532,81 +443,21 @@ $current_date = date('M j, Y');
         
         .table-actions{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap}
         .token-info{font-size:0.7rem;color:var(--text3);margin-top:0.5rem;text-align:center}
-
-        /* Inbox Styles */
-        .card-header-inbox {
-            display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;
-        }
-        .unread-badge {
-            display:inline-flex;align-items:center;justify-content:center;
-            min-width:22px;height:22px;padding:0 7px;
-            background:var(--red);color:#fff;font-size:0.7rem;font-weight:700;
-            border-radius:999px;margin-left:0.5rem;
-        }
-        .unread-badge.zero{background:var(--text3)}
-
-        .btn-refresh,.btn-mark-all{
-            padding:0.3rem 0.8rem;border:1px solid var(--border2);
-            border-radius:6px;background:var(--bg3);color:var(--text2);font-size:0.8rem;transition:all 0.2s;
-        }
-        .btn-refresh:hover,.btn-mark-all:hover{border-color:var(--accent);color:var(--accent)}
-        .btn-mark-all{background:var(--accent-bg)}
-
-        .inbox-container{max-height:500px;overflow-y:auto;display:flex;flex-direction:column;gap:0.75rem}
-        .inbox-item{
-            display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem 1rem;
-            background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);transition:all 0.2s;
-        }
-        .inbox-item.unread{border-left:3px solid var(--accent);background:var(--accent-bg)}
-        .inbox-item.read{opacity:0.7}
-        .inbox-item:hover{border-color:var(--border2)}
-
-        .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;margin-top:6px}
-        .unread-dot{background:var(--accent);animation:pulse 2s infinite}
-        .read-dot{background:var(--text3)}
-
-        .inbox-content{flex:1;min-width:0}
-        .inbox-header{display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.3rem}
-        .inbox-name{color:var(--text);font-size:0.9rem}
-        .inbox-email{color:var(--text2);font-size:0.8rem}
-        .inbox-date{color:var(--text3);font-size:0.7rem;margin-left:auto;font-family:var(--mono)}
-        .inbox-subject{color:var(--text2);font-size:0.82rem;margin-bottom:0.2rem}
-        .inbox-message{color:var(--text2);font-size:0.85rem;line-height:1.5;word-break:break-word}
-        .btn-mark-read{
-            padding:0.2rem 0.6rem;border:1px solid var(--border2);border-radius:4px;
-            background:transparent;color:var(--text3);font-size:0.7rem;cursor:pointer;transition:all 0.2s;flex-shrink:0;
-        }
-        .btn-mark-read:hover{border-color:var(--green);color:var(--green)}
-        .inbox-footer{
-            display:flex;justify-content:space-between;margin-top:1rem;padding-top:0.75rem;
-            border-top:1px solid var(--border);font-size:0.78rem;color:var(--text3);
-        }
-
-        /* Toast */
-        .toast-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:360px}
-        .toast{padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.85rem;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:slideIn 0.3s ease;display:flex;align-items:center;gap:8px}
-        .toast.success{border-color:var(--green)}
-        .toast.info{border-color:var(--accent)}
-        .toast.error{border-color:var(--red)}
-
-        @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-
+        
         @media (max-width:768px){
             .form-grid{grid-template-columns:1fr}
             .form-grid .span-2{grid-column:1}
             .admin-header{flex-direction:column;align-items:stretch;text-align:center}
-            .admin-nav{justify-content:center}
-            .card-header-inbox{flex-direction:column;align-items:stretch}
-            .inbox-header{flex-direction:column;align-items:flex-start}
-            .inbox-date{margin-left:0}
+            .admin-nav{justify-content:center;}
         }
     </style>
 </head>
 <body>
 
 <?php if (!is_authenticated()): ?>
-<!-- Login Form -->
+<!-- ============================================ -->
+<!-- LOGIN FORM -->
+<!-- ============================================ -->
 <div class="login-wrap">
     <div class="login-card">
         <h2>🔐 Admin Login</h2>
@@ -635,12 +486,19 @@ $current_date = date('M j, Y');
 
 <?php else: ?>
 
-<!-- Dashboard -->
+<!-- ============================================ -->
+<!-- ADMIN DASHBOARD -->
+<!-- ============================================ -->
 <header class="admin-header">
-    <div class="admin-logo"><span>🔒</span> Portfolio Admin</div>
+    <div class="admin-logo">
+        <span>🔒</span> Portfolio Admin
+    </div>
+    
     <nav class="admin-nav">
         <a href="admin.php" class="active">📊 Dashboard</a>
         <a href="index.html" class="back-link">← View Portfolio</a>
+        
+        <!-- Logout Form -->
         <form method="POST" style="margin:0">
             <input type="hidden" name="action" value="logout" />
             <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>" />
@@ -651,19 +509,13 @@ $current_date = date('M j, Y');
 
 <div class="admin-body">
 
-    <!-- Stats -->
+    <!-- ============================================ -->
+    <!-- STATS - Dashboard Overview -->
+    <!-- ============================================ -->
     <div class="stats-row">
         <div class="stat-card">
-            <span class="stat-num" id="todayVisitors"><?= number_format($visitors_today) ?></span>
-            <span class="stat-lbl">👤 Today's Visitors</span>
-        </div>
-        <div class="stat-card">
-            <span class="stat-num" id="totalVisitors"><?= number_format($visitors_total) ?></span>
-            <span class="stat-lbl">📊 Total Visitors</span>
-        </div>
-        <div class="stat-card">
-            <span class="stat-num" id="unreadCount"><?= $unread_count ?></span>
-            <span class="stat-lbl">📬 Unread Messages</span>
+            <span class="stat-num"><?= number_format($visitors) ?></span>
+            <span class="stat-lbl">👤 Total Visitors</span>
         </div>
         <div class="stat-card">
             <span class="stat-num"><?= $projCount ?></span>
@@ -679,18 +531,30 @@ $current_date = date('M j, Y');
         </div>
     </div>
 
-    <!-- Status Messages -->
+    <!-- ============================================ -->
+    <!-- STATUS MESSAGES -->
+    <!-- ============================================ -->
     <?php if ($statusMsg): ?>
-    <div class="status-msg <?= $statusType ?>"><?= htmlspecialchars($statusMsg) ?></div>
+    <div class="status-msg <?= $statusType ?>">
+        <?= htmlspecialchars($statusMsg) ?>
+    </div>
     <?php endif ?>
 
-    <!-- Projects -->
+    <!-- ============================================ -->
+    <!-- PROJECTS MANAGEMENT -->
+    <!-- ============================================ -->
     <div class="card">
         <p class="card-title">📁 Manage Projects</p>
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr><th>Icon</th><th>Title</th><th>Tags</th><th>Order</th><th>Actions</th></tr>
+                    <tr>
+                        <th>Icon</th>
+                        <th>Title</th>
+                        <th>Tags</th>
+                        <th>Order</th>
+                        <th>Actions</th>
+                    </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($projects as $p): ?>
@@ -710,103 +574,89 @@ $current_date = date('M j, Y');
                     </tr>
                     <?php endforeach ?>
                     <?php if (empty($projects)): ?>
-                    <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:2rem">📂 No projects yet. Add one below!</td></tr>
+                    <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:2rem">
+                        📂 No projects yet. Add one below!
+                    </td></tr>
                     <?php endif ?>
                 </tbody>
             </table>
         </div>
 
-        <!-- Add Project Form -->
+        <!-- ============================================ -->
+        <!-- ADD PROJECT FORM -->
+        <!-- ============================================ -->
         <div style="margin-top:2rem;border-top:1px solid var(--border);padding-top:1.5rem">
-            <p style="font-size:0.85rem;font-weight:600;color:var(--text2);margin-bottom:1rem">➕ Add New Project</p>
+            <p style="font-size:0.85rem;font-weight:600;color:var(--text2);margin-bottom:1rem">
+                ➕ Add New Project
+            </p>
             <form method="POST">
                 <input type="hidden" name="action" value="add_project" />
                 <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>" />
+                
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="title">Title *</label>
-                        <input type="text" name="title" id="title" required placeholder="My Awesome Project" maxlength="100" />
+                        <input type="text" name="title" id="title" required 
+                               placeholder="My Awesome Project" maxlength="100" />
                     </div>
+                    
                     <div class="form-group">
                         <label for="icon">Icon (emoji)</label>
                         <input type="text" name="icon" id="icon" placeholder="🛠️" maxlength="4" />
                     </div>
+                    
                     <div class="form-group span-2">
                         <label for="description">Description</label>
-                        <textarea name="description" id="description" rows="3" placeholder="What this project does..." maxlength="500"></textarea>
+                        <textarea name="description" id="description" rows="3" 
+                                  placeholder="What this project does..." maxlength="500"></textarea>
                     </div>
+                    
                     <div class="form-group">
                         <label for="tags">Tags (comma-separated)</label>
                         <input type="text" name="tags" id="tags" placeholder="PHP,SQL,JavaScript" maxlength="200" />
                     </div>
+                    
                     <div class="form-group">
                         <label for="sort_order">Sort order</label>
                         <input type="number" name="sort_order" id="sort_order" value="10" min="0" max="999" />
                     </div>
+                    
                     <div class="form-group">
                         <label for="github_url">GitHub URL</label>
-                        <input type="url" name="github_url" id="github_url" placeholder="https://github.com/..." maxlength="255" />
+                        <input type="url" name="github_url" id="github_url" 
+                               placeholder="https://github.com/..." maxlength="255" />
                     </div>
+                    
                     <div class="form-group">
                         <label for="demo_url">Demo URL</label>
-                        <input type="url" name="demo_url" id="demo_url" placeholder="https://..." maxlength="255" />
+                        <input type="url" name="demo_url" id="demo_url" 
+                               placeholder="https://..." maxlength="255" />
                     </div>
                 </div>
+                
                 <button type="submit" class="btn-add">➕ Add Project</button>
             </form>
         </div>
     </div>
 
-    <!-- Messages Inbox -->
-    <div class="card" id="inbox-card">
-        <div class="card-header-inbox">
-            <p class="card-title" style="margin-bottom:0">📬 Messages Inbox <span class="unread-badge <?= $unread_count === 0 ? 'zero' : '' ?>" id="unreadBadge"><?= $unread_count ?></span></p>
-            <button class="btn-refresh" id="refreshInbox" title="Refresh now">🔄</button>
-            <?php if ($unread_count > 0): ?>
-            <button class="btn-mark-all" id="markAllRead">✓ Mark all read</button>
-            <?php endif; ?>
-        </div>
-        <div class="inbox-container" id="inboxContainer">
-            <?php if (empty($messages)): ?>
-                <p style="text-align:center;color:var(--text3);padding:2rem;">📭 No messages yet</p>
-            <?php else: ?>
-                <?php foreach ($messages as $msg): ?>
-                <div class="inbox-item <?= $msg['is_read'] ? 'read' : 'unread' ?>" data-id="<?= $msg['id'] ?>">
-                    <div class="inbox-status">
-                        <span class="status-dot <?= $msg['is_read'] ? 'read-dot' : 'unread-dot' ?>"></span>
-                    </div>
-                    <div class="inbox-content">
-                        <div class="inbox-header">
-                            <strong class="inbox-name"><?= htmlspecialchars($msg['name']) ?></strong>
-                            <span class="inbox-email"><?= htmlspecialchars($msg['email']) ?></span>
-                            <span class="inbox-date"><?= date('M j, Y g:i A', strtotime($msg['submitted_at'])) ?></span>
-                        </div>
-                        <div class="inbox-subject"><?= htmlspecialchars($msg['subject'] ?: '(No subject)') ?></div>
-                        <div class="inbox-message"><?= nl2br(htmlspecialchars($msg['message'])) ?></div>
-                    </div>
-                    <?php if (!$msg['is_read']): ?>
-                    <button class="btn-mark-read" data-id="<?= $msg['id'] ?>">Mark read</button>
-                    <?php endif; ?>
-                </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-        <div class="inbox-footer">
-            <span class="inbox-status-text" id="inboxStatus">Auto-refresh every 15s</span>
-            <span class="inbox-count" id="inboxCount"><?= count($messages) ?> messages</span>
-        </div>
-    </div>
-
-    <!-- Quick Actions -->
+    <!-- ============================================ -->
+    <!-- QUICK ACTIONS -->
+    <!-- ============================================ -->
     <div class="card" style="border-color:var(--border2);">
         <p class="card-title">⚡ Quick Actions</p>
         <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-            <a href="index.html" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">🌐 View Portfolio</a>
-            <a href="#" onclick="window.location.reload();" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">🔄 Refresh Dashboard</a>
+            <a href="index.html" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">
+                🌐 View Portfolio
+            </a>
+            <a href="#" onclick="window.location.reload();" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">
+                🔄 Refresh Dashboard
+            </a>
         </div>
     </div>
 
-    <!-- Security Footer -->
+    <!-- ============================================ -->
+    <!-- SECURITY FOOTER -->
+    <!-- ============================================ -->
     <div style="text-align:center;font-size:0.75rem;color:var(--text3);border-top:1px solid var(--border);padding-top:1rem">
         🔒 CSRF Protected • Rate Limiting (5/15min) • Session Security • Input Validation
         <br>⏱ Session expires after 1 hour of inactivity
@@ -817,260 +667,91 @@ $current_date = date('M j, Y');
 
 <?php endif; ?>
 
-<!-- JavaScript -->
+<!-- ============================================ -->
+<!-- JAVASCRIPT - LIVE CLOCK & FUNCTIONALITY -->
+<!-- ============================================ -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     
-    // Live Clock
+    // ============================================
+    // LIVE CLOCK - Updates every second
+    // ============================================
     function updateClock() {
         const now = new Date();
+        
+        // Format time as HH:MM:SS with leading zeros
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         const seconds = String(now.getSeconds()).padStart(2, '0');
+        
         const timeString = hours + ':' + minutes + ':' + seconds;
+        
+        // Update the clock element
         const clockElement = document.getElementById('liveClock');
-        if (clockElement) clockElement.textContent = timeString;
+        if (clockElement) {
+            clockElement.textContent = timeString;
+        }
+        
+        // Also update date (in case it changes at midnight)
         const dateElement = document.getElementById('currentDate');
         if (dateElement) {
-            dateElement.textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const options = { month: 'short', day: 'numeric', year: 'numeric' };
+            const dateString = now.toLocaleDateString('en-US', options);
+            dateElement.textContent = dateString;
         }
     }
+    
+    // Update clock immediately on page load
     updateClock();
+    
+    // Update clock every second
     setInterval(updateClock, 1000);
-
-    <?php if (is_authenticated()): ?>
-    // ============================================
-    // INBOX AUTO-REFRESH
-    // ============================================
-    let lastMessageId = <?= !empty($messages) ? (int)$messages[0]['id'] : 0 ?>;
-    let pollingInterval = null;
-
-    function refreshInbox() {
-        fetch(`php/messages.php?since_id=${lastMessageId}&limit=20`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.messages && data.messages.length > 0) {
-                    const badge = document.getElementById('unreadBadge');
-                    if (badge) {
-                        badge.textContent = data.unread_count;
-                        badge.classList.toggle('zero', data.unread_count === 0);
-                    }
-                    const unreadStat = document.getElementById('unreadCount');
-                    if (unreadStat) unreadStat.textContent = data.unread_count;
-                    
-                    if (data.latest_id > lastMessageId) {
-                        lastMessageId = data.latest_id;
-                    }
-                    
-                    const container = document.getElementById('inboxContainer');
-                    if (container) {
-                        const placeholder = container.querySelector('p[style*="text-align:center"]');
-                        if (placeholder && data.messages.length > 0) placeholder.remove();
-                        
-                        let hasNew = false;
-                        data.messages.forEach(msg => {
-                            if (!container.querySelector(`.inbox-item[data-id="${msg.id}"]`)) {
-                                hasNew = true;
-                                container.prepend(createInboxItem(msg));
-                            }
-                        });
-                        
-                        const countEl = document.getElementById('inboxCount');
-                        if (countEl) {
-                            countEl.textContent = `${container.querySelectorAll('.inbox-item').length} messages`;
-                        }
-                        
-                        if (hasNew) showToast('📬 New message received!', 'success');
-                    }
-                }
-                const statusEl = document.getElementById('inboxStatus');
-                if (statusEl) {
-                    statusEl.textContent = `Auto-refresh every 15s • Last update: ${new Date().toLocaleTimeString()}`;
-                }
-            })
-            .catch(err => console.error('Inbox refresh error:', err));
-    }
-
-    function createInboxItem(msg) {
-        const div = document.createElement('div');
-        div.className = `inbox-item ${msg.is_read ? 'read' : 'unread'}`;
-        div.dataset.id = msg.id;
-        const isUnread = !msg.is_read;
-        div.innerHTML = `
-            <div class="inbox-status"><span class="status-dot ${isUnread ? 'unread-dot' : 'read-dot'}"></span></div>
-            <div class="inbox-content">
-                <div class="inbox-header">
-                    <strong class="inbox-name">${escapeHtml(msg.name)}</strong>
-                    <span class="inbox-email">${escapeHtml(msg.email)}</span>
-                    <span class="inbox-date">${escapeHtml(msg.submitted_at)}</span>
-                </div>
-                <div class="inbox-subject">${escapeHtml(msg.subject || '(No subject)')}</div>
-                <div class="inbox-message">${escapeHtml(msg.message).replace(/\n/g, '<br>')}</div>
-            </div>
-            ${isUnread ? `<button class="btn-mark-read" data-id="${msg.id}">Mark read</button>` : ''}
-        `;
-        const markBtn = div.querySelector('.btn-mark-read');
-        if (markBtn) {
-            markBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                markAsRead(this.dataset.id);
-            });
-        }
-        return div;
-    }
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    function markAsRead(id) {
-        const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
-        const formData = new FormData();
-        formData.append('action', 'mark_read');
-        formData.append('id', id);
-        formData.append('csrf_token', csrfToken);
-        
-        fetch('admin.php', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    const item = document.querySelector(`.inbox-item[data-id="${id}"]`);
-                    if (item) {
-                        item.classList.remove('unread');
-                        item.classList.add('read');
-                        const dot = item.querySelector('.status-dot');
-                        if (dot) dot.className = 'status-dot read-dot';
-                        const markBtn = item.querySelector('.btn-mark-read');
-                        if (markBtn) markBtn.remove();
-                        
-                        const badge = document.getElementById('unreadBadge');
-                        if (badge) {
-                            const current = parseInt(badge.textContent) || 0;
-                            badge.textContent = Math.max(0, current - 1);
-                            badge.classList.toggle('zero', badge.textContent === '0');
-                        }
-                        const unreadStat = document.getElementById('unreadCount');
-                        if (unreadStat) {
-                            const current = parseInt(unreadStat.textContent) || 0;
-                            unreadStat.textContent = Math.max(0, current - 1);
-                        }
-                        updateMarkAllButton();
-                    }
-                }
-            })
-            .catch(err => console.error('Mark read error:', err));
-    }
-
-    function updateMarkAllButton() {
-        const badge = document.getElementById('unreadBadge');
-        const markAllBtn = document.getElementById('markAllRead');
-        const unreadCount = parseInt(badge?.textContent || 0);
-        if (markAllBtn) {
-            markAllBtn.style.display = unreadCount === 0 ? 'none' : 'inline-block';
-        }
-    }
-
-    document.getElementById('markAllRead')?.addEventListener('click', function() {
-        const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
-        const formData = new FormData();
-        formData.append('action', 'mark_all_read');
-        formData.append('csrf_token', csrfToken);
-        
-        fetch('admin.php', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    document.querySelectorAll('.inbox-item.unread').forEach(item => {
-                        item.classList.remove('unread');
-                        item.classList.add('read');
-                        const dot = item.querySelector('.status-dot');
-                        if (dot) dot.className = 'status-dot read-dot';
-                        const markBtn = item.querySelector('.btn-mark-read');
-                        if (markBtn) markBtn.remove();
-                    });
-                    const badge = document.getElementById('unreadBadge');
-                    if (badge) { badge.textContent = '0'; badge.classList.add('zero'); }
-                    const unreadStat = document.getElementById('unreadCount');
-                    if (unreadStat) unreadStat.textContent = '0';
-                    updateMarkAllButton();
-                    showToast('✓ All messages marked as read', 'success');
-                }
-            })
-            .catch(err => console.error('Mark all read error:', err));
-    });
-
-    document.getElementById('refreshInbox')?.addEventListener('click', refreshInbox);
-
-    function startPolling() {
-        setTimeout(refreshInbox, 1000);
-        pollingInterval = setInterval(refreshInbox, 15000);
-    }
-    startPolling();
-
-    // ============================================
-    // VISITOR COUNTER AUTO-REFRESH
-    // ============================================
-    function refreshVisitors() {
-        fetch('php/visitor.php')
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    const todayEl = document.getElementById('todayVisitors');
-                    if (todayEl) {
-                        animateNumber(todayEl, parseInt(todayEl.textContent.replace(/,/g, '')) || 0, data.today, 600);
-                    }
-                    const totalEl = document.getElementById('totalVisitors');
-                    if (totalEl) {
-                        animateNumber(totalEl, parseInt(totalEl.textContent.replace(/,/g, '')) || 0, data.total, 600);
-                    }
-                }
-            })
-            .catch(err => console.error('Visitor refresh error:', err));
-    }
-
-    function animateNumber(el, from, to, duration) {
-        if (!el) return;
-        const start = performance.now();
-        function step(now) {
-            const progress = Math.min((now - start) / duration, 1);
-            const value = Math.round(from + (to - from) * (1 - Math.pow(1 - progress, 3)));
-            el.textContent = value.toLocaleString();
-            if (progress < 1) requestAnimationFrame(step);
-        }
-        requestAnimationFrame(step);
-    }
-
-    setInterval(refreshVisitors, 30000);
-
-    // ============================================
-    // TOAST NOTIFICATIONS
-    // ============================================
-    function showToast(message, type = 'info') {
-        let container = document.querySelector('.toast-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.className = 'toast-container';
-            document.body.appendChild(container);
-        }
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-        toast.textContent = message;
-        container.appendChild(toast);
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateX(20px)';
-            toast.style.transition = 'all 0.3s ease';
-            setTimeout(() => toast.remove(), 300);
-        }, 4000);
-    }
-
+    
     // ============================================
     // CSRF TOKEN LOGGING
     // ============================================
+    const forms = document.querySelectorAll('form');
     console.log('🔒 CSRF Protection Active');
-    <?php endif; ?>
+    console.log('📝 Forms found:', forms.length);
+    
+    forms.forEach((form, index) => {
+        const token = form.querySelector('input[name="csrf_token"]');
+        if (token) {
+            console.log(`✅ Form ${index + 1}: CSRF token present (${token.value.substring(0, 10)}...)`);
+        }
+    });
+    
+    // ============================================
+    // HIGHLIGHT CURRENT PAGE
+    // ============================================
+    const currentPage = window.location.pathname.split('/').pop() || 'admin.php';
+    document.querySelectorAll('.admin-nav a').forEach(link => {
+        if (link.getAttribute('href') === currentPage) {
+            link.classList.add('active');
+        }
+    });
+    
+    // ============================================
+    // WARN BEFORE LEAVING WITH UNSAVED CHANGES
+    // ============================================
+    let formModified = false;
+    const addForm = document.querySelector('form[action*="add_project"]');
+    if (addForm) {
+        addForm.addEventListener('input', function() {
+            formModified = true;
+        });
+        
+        addForm.addEventListener('submit', function() {
+            formModified = false;
+        });
+    }
+    
+    window.addEventListener('beforeunload', function(e) {
+        if (formModified) {
+            e.preventDefault();
+            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        }
+    });
 });
 </script>
 
