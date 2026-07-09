@@ -42,7 +42,7 @@ function verify_csrf_token($token) {
     if (empty($_SESSION['csrf_token']) || empty($token)) {
         return false;
     }
-    return $_SESSION['csrf_token'] === $token;
+    return hash_equals($_SESSION['csrf_token'], $token);
 }
 
 // ============================================
@@ -109,7 +109,10 @@ $error = '';
 $statusMsg = '';
 $statusType = '';
 $projects = [];
-$visitors = 0;
+$messages = [];
+$unread_count = 0;
+$visitors_today = 0;
+$visitors_total = 0;
 $projCount = 0;
 
 // ============================================
@@ -201,12 +204,48 @@ if (is_authenticated()) {
     }
     
     // ============================================
-    // HANDLE POST REQUESTS
+    // HANDLE POST REQUESTS (AJAX + Form)
     // ============================================
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $action = $_POST['action'];
         
-        if ($action !== 'login') {
+        // ============================================
+        // HANDLE MARK AS READ (AJAX)
+        // ============================================
+        if ($action === 'mark_read') {
+            if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+                echo json_encode(['success' => false, 'error' => 'CSRF validation failed']);
+                exit;
+            }
+            $id = filter_var($_POST['id'] ?? 0, FILTER_VALIDATE_INT);
+            if ($id > 0) {
+                $stmt = $pdo->prepare("UPDATE contacts SET is_read = 1 WHERE id = ?");
+                $stmt->execute([$id]);
+                echo json_encode(['success' => true]);
+                exit;
+            }
+            echo json_encode(['success' => false]);
+            exit;
+        }
+        
+        // ============================================
+        // HANDLE MARK ALL READ (AJAX)
+        // ============================================
+        if ($action === 'mark_all_read') {
+            if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+                echo json_encode(['success' => false, 'error' => 'CSRF validation failed']);
+                exit;
+            }
+            $stmt = $pdo->prepare("UPDATE contacts SET is_read = 1 WHERE is_read = 0");
+            $stmt->execute();
+            echo json_encode(['success' => true]);
+            exit;
+        }
+        
+        // ============================================
+        // CSRF CHECK FOR FORM ACTIONS
+        // ============================================
+        if ($action !== 'login' && $action !== 'mark_read' && $action !== 'mark_all_read') {
             if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
                 $statusMsg = 'Security validation failed. Please refresh the page and try again.';
                 $statusType = 'error';
@@ -292,9 +331,40 @@ if (is_authenticated()) {
     // FETCH DATA
     // ============================================
     try {
+        // Projects
         $projects = $pdo->query("SELECT * FROM projects ORDER BY sort_order ASC LIMIT 100")->fetchAll();
-        $visitors = (int) $pdo->query("SELECT COUNT(*) FROM visitors")->fetchColumn();
         $projCount = count($projects);
+        
+        // Messages
+        $stmt = $pdo->prepare("
+            SELECT id, name, email, subject, message, is_read, submitted_at 
+            FROM contacts 
+            ORDER BY id DESC 
+            LIMIT 50
+        ");
+        $stmt->execute();
+        $messages = $stmt->fetchAll();
+        
+        // Unread count
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM contacts WHERE is_read = 0");
+        $stmt->execute();
+        $unread_count = (int)$stmt->fetchColumn();
+        
+        // Visitors - today
+        $today = date('Y-m-d');
+        $stmt = $pdo->prepare("
+            SELECT COUNT(DISTINCT visitor_id) 
+            FROM visitors 
+            WHERE DATE(visited_at) = ?
+        ");
+        $stmt->execute([$today]);
+        $visitors_today = (int)$stmt->fetchColumn();
+        
+        // Visitors - total
+        $stmt = $pdo->prepare("SELECT COUNT(DISTINCT visitor_id) FROM visitors");
+        $stmt->execute();
+        $visitors_total = (int)$stmt->fetchColumn();
+        
     } catch (PDOException $e) {
         error_log("Database query failed: " . $e->getMessage());
         $statusMsg = 'Error loading data. Please refresh the page.';
@@ -331,9 +401,6 @@ $current_date = date('M j, Y');
         a{color:var(--accent);text-decoration:none}
         button{cursor:pointer;font-family:inherit}
 
-        /* ============================================ */
-        /* HEADER / NAVIGATION */
-        /* ============================================ */
         .admin-header{
             background:var(--bg2);border-bottom:1px solid var(--border);
             padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;
@@ -359,7 +426,7 @@ $current_date = date('M j, Y');
         .back-link{font-size:0.85rem;color:var(--text2)}
         .back-link:hover{color:var(--accent)}
 
-        .admin-body{max-width:1100px;margin:0 auto;padding:2rem 1.5rem;display:grid;gap:2rem}
+        .admin-body{max-width:1200px;margin:0 auto;padding:2rem 1.5rem;display:grid;gap:2rem}
 
         .card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.75rem}
         .card-title{font-size:1rem;font-weight:600;margin-bottom:1.5rem;color:var(--accent)}
@@ -394,18 +461,7 @@ $current_date = date('M j, Y');
         .stat-num{display:block;font-size:2rem;font-weight:700;color:var(--accent)}
         .stat-lbl{font-size:0.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;margin-top:0.2rem}
 
-        /* Live Clock */
-        .live-clock {
-            font-variant-numeric: tabular-nums;
-            letter-spacing: 0.05em;
-        }
-        .seconds-blink {
-            animation: blink 1s step-end infinite;
-        }
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
-        }
+        .live-clock{font-variant-numeric:tabular-nums;letter-spacing:0.05em}
 
         /* Tables */
         .table-wrap{overflow-x:auto}
@@ -443,12 +499,167 @@ $current_date = date('M j, Y');
         
         .table-actions{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap}
         .token-info{font-size:0.7rem;color:var(--text3);margin-top:0.5rem;text-align:center}
-        
+
+        /* ── INBOX STYLES ── */
+        .card-header-inbox {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+        .unread-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 7px;
+            background: var(--red);
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: 700;
+            border-radius: 999px;
+            margin-left: 0.5rem;
+        }
+        .unread-badge.zero { background: var(--text3); }
+
+        .btn-refresh, .btn-mark-all {
+            padding: 0.3rem 0.8rem;
+            border: 1px solid var(--border2);
+            border-radius: 6px;
+            background: var(--bg3);
+            color: var(--text2);
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+        .btn-refresh:hover, .btn-mark-all:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        .btn-mark-all { background: var(--accent-bg); }
+
+        .inbox-container {
+            max-height: 500px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .inbox-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            transition: all 0.2s;
+        }
+        .inbox-item.unread { border-left: 3px solid var(--accent); background: var(--accent-bg); }
+        .inbox-item.read { opacity: 0.7; }
+        .inbox-item:hover { border-color: var(--border2); }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+        .unread-dot { background: var(--accent); animation: pulse 2s infinite; }
+        .read-dot { background: var(--text3); }
+
+        .inbox-content { flex: 1; min-width: 0; }
+        .inbox-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.3rem;
+        }
+        .inbox-name { color: var(--text); font-size: 0.9rem; }
+        .inbox-email { color: var(--text2); font-size: 0.8rem; }
+        .inbox-date { color: var(--text3); font-size: 0.7rem; margin-left: auto; font-family: var(--mono); }
+        .inbox-subject {
+            color: var(--text2);
+            font-size: 0.82rem;
+            margin-bottom: 0.2rem;
+        }
+        .inbox-message {
+            color: var(--text2);
+            font-size: 0.85rem;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+        .btn-mark-read {
+            padding: 0.2rem 0.6rem;
+            border: 1px solid var(--border2);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text3);
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .btn-mark-read:hover {
+            border-color: var(--green);
+            color: var(--green);
+        }
+        .inbox-footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.78rem;
+            color: var(--text3);
+        }
+
+        /* ── TOAST STYLES ── */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 360px;
+        }
+        .toast {
+            padding: 12px 16px;
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-size: 0.85rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .toast.success { border-color: var(--green); }
+        .toast.info { border-color: var(--accent); }
+        .toast.error { border-color: var(--red); }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
         @media (max-width:768px){
             .form-grid{grid-template-columns:1fr}
             .form-grid .span-2{grid-column:1}
             .admin-header{flex-direction:column;align-items:stretch;text-align:center}
             .admin-nav{justify-content:center;}
+            .card-header-inbox{flex-direction:column;align-items:stretch}
+            .inbox-header{flex-direction:column;align-items:flex-start}
+            .inbox-date{margin-left:0}
         }
     </style>
 </head>
@@ -514,8 +725,16 @@ $current_date = date('M j, Y');
     <!-- ============================================ -->
     <div class="stats-row">
         <div class="stat-card">
-            <span class="stat-num"><?= number_format($visitors) ?></span>
-            <span class="stat-lbl">👤 Total Visitors</span>
+            <span class="stat-num" id="todayVisitors"><?= number_format($visitors_today) ?></span>
+            <span class="stat-lbl">👤 Today's Visitors</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-num" id="totalVisitors"><?= number_format($visitors_total) ?></span>
+            <span class="stat-lbl">📊 Total Visitors</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-num" id="unreadCount"><?= $unread_count ?></span>
+            <span class="stat-lbl">📬 Unread Messages</span>
         </div>
         <div class="stat-card">
             <span class="stat-num"><?= $projCount ?></span>
@@ -640,6 +859,48 @@ $current_date = date('M j, Y');
     </div>
 
     <!-- ============================================ -->
+    <!-- MESSAGES INBOX - Live Feed -->
+    <!-- ============================================ -->
+    <div class="card" id="inbox-card">
+        <div class="card-header-inbox">
+            <p class="card-title" style="margin-bottom:0">📬 Messages Inbox <span class="unread-badge <?= $unread_count === 0 ? 'zero' : '' ?>" id="unreadBadge"><?= $unread_count ?></span></p>
+            <button class="btn-refresh" id="refreshInbox" title="Refresh now">🔄</button>
+            <?php if ($unread_count > 0): ?>
+            <button class="btn-mark-all" id="markAllRead">✓ Mark all read</button>
+            <?php endif; ?>
+        </div>
+        <div class="inbox-container" id="inboxContainer">
+            <?php if (empty($messages)): ?>
+                <p style="text-align:center;color:var(--text3);padding:2rem;">📭 No messages yet</p>
+            <?php else: ?>
+                <?php foreach ($messages as $msg): ?>
+                <div class="inbox-item <?= $msg['is_read'] ? 'read' : 'unread' ?>" data-id="<?= $msg['id'] ?>">
+                    <div class="inbox-status">
+                        <span class="status-dot <?= $msg['is_read'] ? 'read-dot' : 'unread-dot' ?>"></span>
+                    </div>
+                    <div class="inbox-content">
+                        <div class="inbox-header">
+                            <strong class="inbox-name"><?= htmlspecialchars($msg['name']) ?></strong>
+                            <span class="inbox-email"><?= htmlspecialchars($msg['email']) ?></span>
+                            <span class="inbox-date"><?= date('M j, Y g:i A', strtotime($msg['submitted_at'])) ?></span>
+                        </div>
+                        <div class="inbox-subject"><?= htmlspecialchars($msg['subject'] ?: '(No subject)') ?></div>
+                        <div class="inbox-message"><?= nl2br(htmlspecialchars($msg['message'])) ?></div>
+                    </div>
+                    <?php if (!$msg['is_read']): ?>
+                    <button class="btn-mark-read" data-id="<?= $msg['id'] ?>">Mark read</button>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+        <div class="inbox-footer">
+            <span class="inbox-status-text" id="inboxStatus">Auto-refresh every 15s</span>
+            <span class="inbox-count" id="inboxCount"><?= count($messages) ?> messages</span>
+        </div>
+    </div>
+
+    <!-- ============================================ -->
     <!-- QUICK ACTIONS -->
     <!-- ============================================ -->
     <div class="card" style="border-color:var(--border2);">
@@ -679,20 +940,17 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateClock() {
         const now = new Date();
         
-        // Format time as HH:MM:SS with leading zeros
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         const seconds = String(now.getSeconds()).padStart(2, '0');
         
         const timeString = hours + ':' + minutes + ':' + seconds;
         
-        // Update the clock element
         const clockElement = document.getElementById('liveClock');
         if (clockElement) {
             clockElement.textContent = timeString;
         }
         
-        // Also update date (in case it changes at midnight)
         const dateElement = document.getElementById('currentDate');
         if (dateElement) {
             const options = { month: 'short', day: 'numeric', year: 'numeric' };
@@ -701,57 +959,313 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Update clock immediately on page load
     updateClock();
-    
-    // Update clock every second
     setInterval(updateClock, 1000);
-    
+
+    <?php if (is_authenticated()): ?>
+    // ============================================
+    // INBOX AUTO-REFRESH (every 15 seconds)
+    // ============================================
+    let lastMessageId = <?= !empty($messages) ? (int)$messages[0]['id'] : 0 ?>;
+    let pollingInterval = null;
+
+    function refreshInbox() {
+        const url = `php/messages.php?since_id=${lastMessageId}&limit=20`;
+        
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.messages && data.messages.length > 0) {
+                    // Update unread badge
+                    const badge = document.getElementById('unreadBadge');
+                    if (badge) {
+                        badge.textContent = data.unread_count;
+                        badge.classList.toggle('zero', data.unread_count === 0);
+                    }
+                    
+                    // Update unread count stat
+                    const unreadStat = document.getElementById('unreadCount');
+                    if (unreadStat) {
+                        unreadStat.textContent = data.unread_count;
+                    }
+                    
+                    // Update last message ID
+                    if (data.latest_id > lastMessageId) {
+                        lastMessageId = data.latest_id;
+                    }
+                    
+                    // Prepend new messages to the inbox
+                    const container = document.getElementById('inboxContainer');
+                    if (container) {
+                        // Remove "no messages" placeholder
+                        const placeholder = container.querySelector('p[style*="text-align:center"]');
+                        if (placeholder && data.messages.length > 0) {
+                            placeholder.remove();
+                        }
+                        
+                        // Add new messages at the top
+                        let hasNew = false;
+                        data.messages.forEach(msg => {
+                            // Check if message already exists
+                            const existing = container.querySelector(`.inbox-item[data-id="${msg.id}"]`);
+                            if (!existing) {
+                                hasNew = true;
+                                const item = createInboxItem(msg);
+                                container.prepend(item);
+                            }
+                        });
+                        
+                        // Update count
+                        const countEl = document.getElementById('inboxCount');
+                        if (countEl) {
+                            const totalItems = container.querySelectorAll('.inbox-item').length;
+                            countEl.textContent = `${totalItems} messages`;
+                        }
+                        
+                        // Show notification if new messages
+                        if (hasNew) {
+                            showToast('📬 New message received!', 'success');
+                        }
+                    }
+                }
+                
+                // Update status text
+                const statusEl = document.getElementById('inboxStatus');
+                if (statusEl) {
+                    const now = new Date();
+                    statusEl.textContent = `Auto-refresh every 15s • Last update: ${now.toLocaleTimeString()}`;
+                }
+            })
+            .catch(err => {
+                console.error('Inbox refresh error:', err);
+            });
+    }
+
+    function createInboxItem(msg) {
+        const div = document.createElement('div');
+        div.className = `inbox-item ${msg.is_read ? 'read' : 'unread'}`;
+        div.dataset.id = msg.id;
+        
+        const isUnread = !msg.is_read;
+        
+        div.innerHTML = `
+            <div class="inbox-status">
+                <span class="status-dot ${isUnread ? 'unread-dot' : 'read-dot'}"></span>
+            </div>
+            <div class="inbox-content">
+                <div class="inbox-header">
+                    <strong class="inbox-name">${escapeHtml(msg.name)}</strong>
+                    <span class="inbox-email">${escapeHtml(msg.email)}</span>
+                    <span class="inbox-date">${escapeHtml(msg.submitted_at)}</span>
+                </div>
+                <div class="inbox-subject">${escapeHtml(msg.subject || '(No subject)')}</div>
+                <div class="inbox-message">${escapeHtml(msg.message).replace(/\n/g, '<br>')}</div>
+            </div>
+            ${isUnread ? `<button class="btn-mark-read" data-id="${msg.id}">Mark read</button>` : ''}
+        `;
+        
+        // Add mark read handler
+        const markBtn = div.querySelector('.btn-mark-read');
+        if (markBtn) {
+            markBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                markAsRead(this.dataset.id);
+            });
+        }
+        
+        return div;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function markAsRead(id) {
+        const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+        
+        const formData = new FormData();
+        formData.append('action', 'mark_read');
+        formData.append('id', id);
+        formData.append('csrf_token', csrfToken);
+        
+        fetch('admin.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const item = document.querySelector(`.inbox-item[data-id="${id}"]`);
+                if (item) {
+                    item.classList.remove('unread');
+                    item.classList.add('read');
+                    const dot = item.querySelector('.status-dot');
+                    if (dot) {
+                        dot.className = 'status-dot read-dot';
+                    }
+                    const markBtn = item.querySelector('.btn-mark-read');
+                    if (markBtn) markBtn.remove();
+                    
+                    // Update badge
+                    const badge = document.getElementById('unreadBadge');
+                    if (badge) {
+                        const current = parseInt(badge.textContent) || 0;
+                        const newCount = Math.max(0, current - 1);
+                        badge.textContent = newCount;
+                        badge.classList.toggle('zero', newCount === 0);
+                    }
+                    
+                    // Update unread stat
+                    const unreadStat = document.getElementById('unreadCount');
+                    if (unreadStat) {
+                        const current = parseInt(unreadStat.textContent) || 0;
+                        unreadStat.textContent = Math.max(0, current - 1);
+                    }
+                    
+                    // Update mark all button
+                    updateMarkAllButton();
+                }
+            }
+        })
+        .catch(err => console.error('Mark read error:', err));
+    }
+
+    function updateMarkAllButton() {
+        const badge = document.getElementById('unreadBadge');
+        const markAllBtn = document.getElementById('markAllRead');
+        const unreadCount = parseInt(badge?.textContent || 0);
+        
+        if (unreadCount === 0) {
+            if (markAllBtn) markAllBtn.style.display = 'none';
+        } else {
+            if (markAllBtn) markAllBtn.style.display = 'inline-block';
+        }
+    }
+
+    // Mark all read
+    document.getElementById('markAllRead')?.addEventListener('click', function() {
+        const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+        
+        const formData = new FormData();
+        formData.append('action', 'mark_all_read');
+        formData.append('csrf_token', csrfToken);
+        
+        fetch('admin.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.querySelectorAll('.inbox-item.unread').forEach(item => {
+                    item.classList.remove('unread');
+                    item.classList.add('read');
+                    const dot = item.querySelector('.status-dot');
+                    if (dot) {
+                        dot.className = 'status-dot read-dot';
+                    }
+                    const markBtn = item.querySelector('.btn-mark-read');
+                    if (markBtn) markBtn.remove();
+                });
+                const badge = document.getElementById('unreadBadge');
+                if (badge) {
+                    badge.textContent = '0';
+                    badge.classList.add('zero');
+                }
+                const unreadStat = document.getElementById('unreadCount');
+                if (unreadStat) {
+                    unreadStat.textContent = '0';
+                }
+                updateMarkAllButton();
+                showToast('✓ All messages marked as read', 'success');
+            }
+        })
+        .catch(err => console.error('Mark all read error:', err));
+    });
+
+    // Manual refresh button
+    document.getElementById('refreshInbox')?.addEventListener('click', refreshInbox);
+
+    // Start polling
+    function startPolling() {
+        setTimeout(refreshInbox, 1000);
+        pollingInterval = setInterval(refreshInbox, 15000);
+    }
+
+    startPolling();
+
+    // ============================================
+    // VISITOR COUNTER AUTO-REFRESH (every 30s)
+    // ============================================
+    function refreshVisitors() {
+        fetch('php/visitor.php')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const todayEl = document.getElementById('todayVisitors');
+                    if (todayEl) {
+                        animateNumber(todayEl, parseInt(todayEl.textContent.replace(/,/g, '')), data.today, 600);
+                    }
+                    const totalEl = document.getElementById('totalVisitors');
+                    if (totalEl) {
+                        animateNumber(totalEl, parseInt(totalEl.textContent.replace(/,/g, '')), data.total, 600);
+                    }
+                }
+            })
+            .catch(err => console.error('Visitor refresh error:', err));
+    }
+
+    function animateNumber(el, from, to, duration) {
+        if (!el) return;
+        const start = performance.now();
+        function step(now) {
+            const progress = Math.min((now - start) / duration, 1);
+            const value = Math.round(from + (to - from) * easeOut(progress));
+            el.textContent = value.toLocaleString();
+            if (progress < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+    // Refresh visitors every 30 seconds
+    setInterval(refreshVisitors, 30000);
+
+    // ============================================
+    // TOAST NOTIFICATIONS
+    // ============================================
+    function showToast(message, type = 'info') {
+        let container = document.querySelector('.toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'toast-container';
+            document.body.appendChild(container);
+        }
+        
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(20px)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
     // ============================================
     // CSRF TOKEN LOGGING
     // ============================================
     const forms = document.querySelectorAll('form');
     console.log('🔒 CSRF Protection Active');
     console.log('📝 Forms found:', forms.length);
-    
-    forms.forEach((form, index) => {
-        const token = form.querySelector('input[name="csrf_token"]');
-        if (token) {
-            console.log(`✅ Form ${index + 1}: CSRF token present (${token.value.substring(0, 10)}...)`);
-        }
-    });
-    
-    // ============================================
-    // HIGHLIGHT CURRENT PAGE
-    // ============================================
-    const currentPage = window.location.pathname.split('/').pop() || 'admin.php';
-    document.querySelectorAll('.admin-nav a').forEach(link => {
-        if (link.getAttribute('href') === currentPage) {
-            link.classList.add('active');
-        }
-    });
-    
-    // ============================================
-    // WARN BEFORE LEAVING WITH UNSAVED CHANGES
-    // ============================================
-    let formModified = false;
-    const addForm = document.querySelector('form[action*="add_project"]');
-    if (addForm) {
-        addForm.addEventListener('input', function() {
-            formModified = true;
-        });
-        
-        addForm.addEventListener('submit', function() {
-            formModified = false;
-        });
-    }
-    
-    window.addEventListener('beforeunload', function(e) {
-        if (formModified) {
-            e.preventDefault();
-            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-        }
-    });
+    <?php endif; ?>
 });
 </script>
 

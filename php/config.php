@@ -8,11 +8,11 @@
 
 define('DB_HOST',   'localhost');
 define('DB_NAME',   'karan_portfolio');   // ← your database name
-define('DB_USER',   'root');           // ← your MySQL username
-define('DB_PASS',   '');               // ← your MySQL password
+define('DB_USER',   'root');              // ← your MySQL username
+define('DB_PASS',   '');                  // ← your MySQL password
 define('DB_CHARSET','utf8mb4');
 
-// Optional: site owner email for contact notifications
+// Site owner email for contact notifications
 define('OWNER_EMAIL', 'chhetrikaran.147@gmail.com');
 
 /**

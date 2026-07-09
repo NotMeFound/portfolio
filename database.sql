@@ -18,22 +18,26 @@ CREATE TABLE IF NOT EXISTS contacts (
   subject      VARCHAR(200)    DEFAULT '',
   message      TEXT            NOT NULL,
   ip_address   VARCHAR(45)     DEFAULT NULL,
+  user_agent   VARCHAR(255)    DEFAULT NULL,
   is_read      TINYINT(1)      NOT NULL DEFAULT 0,
   submitted_at TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   INDEX idx_email       (email),
   INDEX idx_submitted   (submitted_at),
-  INDEX idx_ip_time     (ip_address, submitted_at)
+  INDEX idx_ip_time     (ip_address, submitted_at),
+  INDEX idx_read_status (is_read, submitted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── visitors: page view counter ────────────────────────────
+-- ── visitors: page view counter (unique daily visitors) ──
 CREATE TABLE IF NOT EXISTS visitors (
   id           INT UNSIGNED    NOT NULL AUTO_INCREMENT,
   ip_address   VARCHAR(45)     DEFAULT NULL,
   user_agent   VARCHAR(255)    DEFAULT NULL,
+  visitor_id   VARCHAR(64)     NOT NULL,
   visited_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  INDEX idx_visited (visited_at)
+  INDEX idx_visitor_date (visitor_id, visited_at),
+  INDEX idx_date (visited_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── projects: dynamic project management (optional CMS) ────

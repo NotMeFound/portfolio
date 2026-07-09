@@ -348,38 +348,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ═══════════════════════════════════
-     10. VISITOR COUNTER
-  ═══════════════════════════════════ */
-  const counterEl = document.getElementById('visitor-count');
+  /* ═══════════════════════════════════
+   10. VISITOR COUNTER (auto-refresh every 30s)
+═══════════════════════════════════ */
+const todayVisitorsEl = document.getElementById('visitor-count');
+const totalVisitorsEl = document.getElementById('total-visitors');
 
-  async function loadVisitorCount() {
+async function loadVisitorCount() {
     try {
-      const res  = await fetch('php/visitor.php');
-      const json = await res.json();
-      if (json.visitors !== undefined) {
-        animateCounter(counterEl, 0, json.visitors, 1000);
-      }
+        const res = await fetch('php/visitor.php');
+        const json = await res.json();
+        if (json.success) {
+            animateCounter(todayVisitorsEl, 0, json.today, 800);
+            if (totalVisitorsEl) {
+                animateCounter(totalVisitorsEl, 0, json.total, 800);
+            }
+        }
     } catch {
-      // Static fallback if PHP not available
-      animateCounter(counterEl, 0, 247, 1000);
+        // Static fallback
+        if (todayVisitorsEl) {
+            animateCounter(todayVisitorsEl, 0, 42, 800);
+        }
+        if (totalVisitorsEl) {
+            animateCounter(totalVisitorsEl, 0, 847, 800);
+        }
     }
-  }
+}
 
-  function animateCounter(el, from, to, duration) {
+function animateCounter(el, from, to, duration) {
+    if (!el) return;
     const start = performance.now();
     function step(now) {
-      const progress = Math.min((now - start) / duration, 1);
-      const value    = Math.round(from + (to - from) * easeOut(progress));
-      el.textContent = value.toLocaleString();
-      if (progress < 1) requestAnimationFrame(step);
+        const progress = Math.min((now - start) / duration, 1);
+        const value = Math.round(from + (to - from) * easeOut(progress));
+        el.textContent = value.toLocaleString();
+        if (progress < 1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
-  }
+}
 
-  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
-  loadVisitorCount();
-
+// Load immediately, then every 30 seconds
+loadVisitorCount();
+setInterval(loadVisitorCount, 30000);
 
   /* ═══════════════════════════════════
      11. SMOOTH SCROLL FOR ALL ANCHOR LINKS
