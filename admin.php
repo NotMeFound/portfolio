@@ -29,7 +29,7 @@ if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > 
 $_SESSION['last_activity'] = time();
 
 // ============================================
-// CSRF TOKEN FUNCTIONS - FIXED
+// CSRF TOKEN FUNCTIONS
 // ============================================
 function generate_csrf_token() {
     if (empty($_SESSION['csrf_token'])) {
@@ -92,7 +92,7 @@ function validate_url($url) {
 }
 
 // ============================================
-// PASSWORD HASH - REPLACE THIS
+// PASSWORD HASH - REPLACE THIS!
 // Generate using: echo password_hash('your_password', PASSWORD_ARGON2ID);
 // ============================================
 define('ADMIN_PASSWORD_HASH', '$2a$12$piqX7yCf5Qto99KVO7hV.ec4bTzHuE/p4CvxsPC20hp4QthD0y/Ji'); // ← CHANGE THIS!
@@ -121,17 +121,23 @@ $projCount = 0;
 if (isset($_POST['action']) && $_POST['action'] === 'login') {
     if (!check_rate_limit('login', 5, 900)) {
         $error = 'Too many login attempts. Please wait 15 minutes.';
+        error_log("Admin login rate limit exceeded from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
     } else {
         $password = sanitize_input($_POST['password'] ?? '');
         
         if (password_verify($password, ADMIN_PASSWORD_HASH)) {
+            // Clear rate limit on success
             unset($_SESSION['rate_limit']['login_' . ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0')]);
+            
+            // Regenerate session ID for security
             session_regenerate_id(true);
             
+            // Set session variables
             $_SESSION['admin_logged_in'] = true;
             $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
             $_SESSION['ip_address'] = $_SERVER['REMOTE_ADDR'] ?? '';
             $_SESSION['login_time'] = time();
+            $_SESSION['login_id'] = bin2hex(random_bytes(16));
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             
             error_log("Admin login successful from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
@@ -149,8 +155,10 @@ if (isset($_POST['action']) && $_POST['action'] === 'login') {
 // ============================================
 if (isset($_POST['action']) && $_POST['action'] === 'logout') {
     if (verify_csrf_token($_POST['csrf_token'] ?? '')) {
+        // Clear all session data
         $_SESSION = array();
         
+        // Delete session cookie
         if (ini_get("session.use_cookies")) {
             $params = session_get_cookie_params();
             setcookie(session_name(), '', time() - 42000,
@@ -172,17 +180,25 @@ function is_authenticated() {
         return false;
     }
     
+    // Validate user agent
     $user_agent = $_SESSION['user_agent'] ?? '';
-    $ip_address = $_SESSION['ip_address'] ?? '';
     $current_ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-    $current_ip = $_SERVER['REMOTE_ADDR'] ?? '';
-    
-    if ($user_agent !== $current_ua || $ip_address !== $current_ip) {
+    if ($user_agent !== $current_ua) {
         session_unset();
         session_destroy();
         return false;
     }
     
+    // Validate IP (optional - comment out if IP changes frequently)
+    $ip_address = $_SESSION['ip_address'] ?? '';
+    $current_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if ($ip_address !== $current_ip) {
+        session_unset();
+        session_destroy();
+        return false;
+    }
+    
+    // Check session timeout
     if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 3600)) {
         session_unset();
         session_destroy();
@@ -219,9 +235,13 @@ if (is_authenticated()) {
             }
             $id = filter_var($_POST['id'] ?? 0, FILTER_VALIDATE_INT);
             if ($id > 0) {
-                $stmt = $pdo->prepare("UPDATE contacts SET is_read = 1 WHERE id = ?");
+                $stmt = $pdo->prepare("UPDATE contacts SET is_read = 1 WHERE id = ? AND is_read = 0");
                 $stmt->execute([$id]);
-                echo json_encode(['success' => true]);
+                if ($stmt->rowCount() > 0) {
+                    echo json_encode(['success' => true]);
+                } else {
+                    echo json_encode(['success' => false, 'error' => 'Message not found or already read']);
+                }
                 exit;
             }
             echo json_encode(['success' => false]);
@@ -238,7 +258,7 @@ if (is_authenticated()) {
             }
             $stmt = $pdo->prepare("UPDATE contacts SET is_read = 1 WHERE is_read = 0");
             $stmt->execute();
-            echo json_encode(['success' => true]);
+            echo json_encode(['success' => true, 'count' => $stmt->rowCount()]);
             exit;
         }
         
@@ -271,6 +291,7 @@ if (is_authenticated()) {
                 $icon = sanitize_input($_POST['icon'] ?? '🛠️');
                 $sort_order = filter_var($_POST['sort_order'] ?? 10, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 999]]) ?: 10;
                 
+                // Validate URLs
                 if (!empty($github_url) && !validate_url($github_url)) {
                     $statusMsg = 'Invalid GitHub URL format.';
                     $statusType = 'error';
@@ -278,21 +299,27 @@ if (is_authenticated()) {
                     $statusMsg = 'Invalid Demo URL format.';
                     $statusType = 'error';
                 } else {
-                    $stmt = $pdo->prepare("INSERT INTO projects (title, description, tags, github_url, demo_url, icon, sort_order)
-                                            VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $stmt->execute([
-                        $title,
-                        $description,
-                        $tags,
-                        $github_url,
-                        $demo_url,
-                        $icon,
-                        $sort_order
-                    ]);
-                    
-                    $statusMsg = 'Project added successfully!';
-                    $statusType = 'success';
-                    error_log("Project added: '$title' by admin");
+                    try {
+                        $stmt = $pdo->prepare("INSERT INTO projects (title, description, tags, github_url, demo_url, icon, sort_order)
+                                                VALUES (?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([
+                            $title,
+                            $description,
+                            $tags,
+                            $github_url,
+                            $demo_url,
+                            $icon,
+                            $sort_order
+                        ]);
+                        
+                        $statusMsg = 'Project added successfully!';
+                        $statusType = 'success';
+                        error_log("Project added: '$title' by admin from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+                    } catch (PDOException $e) {
+                        error_log("Add project failed: " . $e->getMessage());
+                        $statusMsg = 'Failed to add project. Please try again.';
+                        $statusType = 'error';
+                    }
                 }
             }
         }
@@ -304,18 +331,24 @@ if (is_authenticated()) {
             $id = filter_var($_POST['id'] ?? 0, FILTER_VALIDATE_INT);
             
             if ($id > 0) {
-                $stmt = $pdo->prepare("SELECT title FROM projects WHERE id = ?");
-                $stmt->execute([$id]);
-                $project = $stmt->fetch();
-                
-                if ($project) {
-                    $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ?");
+                try {
+                    $stmt = $pdo->prepare("SELECT title FROM projects WHERE id = ?");
                     $stmt->execute([$id]);
-                    $statusMsg = 'Project deleted successfully.';
-                    $statusType = 'success';
-                    error_log("Project deleted: '" . $project['title'] . "' (ID: $id) by admin");
-                } else {
-                    $statusMsg = 'Project not found.';
+                    $project = $stmt->fetch();
+                    
+                    if ($project) {
+                        $stmt = $pdo->prepare("DELETE FROM projects WHERE id = ?");
+                        $stmt->execute([$id]);
+                        $statusMsg = 'Project deleted successfully.';
+                        $statusType = 'success';
+                        error_log("Project deleted: '" . $project['title'] . "' (ID: $id) by admin from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+                    } else {
+                        $statusMsg = 'Project not found.';
+                        $statusType = 'error';
+                    }
+                } catch (PDOException $e) {
+                    error_log("Delete project failed: " . $e->getMessage());
+                    $statusMsg = 'Failed to delete project. Please try again.';
                     $statusType = 'error';
                 }
             } else {
@@ -500,163 +533,70 @@ $current_date = date('M j, Y');
         .table-actions{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap}
         .token-info{font-size:0.7rem;color:var(--text3);margin-top:0.5rem;text-align:center}
 
-        /* ── INBOX STYLES ── */
+        /* Inbox Styles */
         .card-header-inbox {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-bottom: 1.5rem;
+            display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;
         }
         .unread-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 22px;
-            height: 22px;
-            padding: 0 7px;
-            background: var(--red);
-            color: #fff;
-            font-size: 0.7rem;
-            font-weight: 700;
-            border-radius: 999px;
-            margin-left: 0.5rem;
+            display:inline-flex;align-items:center;justify-content:center;
+            min-width:22px;height:22px;padding:0 7px;
+            background:var(--red);color:#fff;font-size:0.7rem;font-weight:700;
+            border-radius:999px;margin-left:0.5rem;
         }
-        .unread-badge.zero { background: var(--text3); }
+        .unread-badge.zero{background:var(--text3)}
 
-        .btn-refresh, .btn-mark-all {
-            padding: 0.3rem 0.8rem;
-            border: 1px solid var(--border2);
-            border-radius: 6px;
-            background: var(--bg3);
-            color: var(--text2);
-            font-size: 0.8rem;
-            transition: all 0.2s;
+        .btn-refresh,.btn-mark-all{
+            padding:0.3rem 0.8rem;border:1px solid var(--border2);
+            border-radius:6px;background:var(--bg3);color:var(--text2);font-size:0.8rem;transition:all 0.2s;
         }
-        .btn-refresh:hover, .btn-mark-all:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-        .btn-mark-all { background: var(--accent-bg); }
+        .btn-refresh:hover,.btn-mark-all:hover{border-color:var(--accent);color:var(--accent)}
+        .btn-mark-all{background:var(--accent-bg)}
 
-        .inbox-container {
-            max-height: 500px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
+        .inbox-container{max-height:500px;overflow-y:auto;display:flex;flex-direction:column;gap:0.75rem}
+        .inbox-item{
+            display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem 1rem;
+            background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);transition:all 0.2s;
         }
-        .inbox-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            transition: all 0.2s;
-        }
-        .inbox-item.unread { border-left: 3px solid var(--accent); background: var(--accent-bg); }
-        .inbox-item.read { opacity: 0.7; }
-        .inbox-item:hover { border-color: var(--border2); }
+        .inbox-item.unread{border-left:3px solid var(--accent);background:var(--accent-bg)}
+        .inbox-item.read{opacity:0.7}
+        .inbox-item:hover{border-color:var(--border2)}
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-            flex-shrink: 0;
-            margin-top: 6px;
-        }
-        .unread-dot { background: var(--accent); animation: pulse 2s infinite; }
-        .read-dot { background: var(--text3); }
+        .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;margin-top:6px}
+        .unread-dot{background:var(--accent);animation:pulse 2s infinite}
+        .read-dot{background:var(--text3)}
 
-        .inbox-content { flex: 1; min-width: 0; }
-        .inbox-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            flex-wrap: wrap;
-            margin-bottom: 0.3rem;
+        .inbox-content{flex:1;min-width:0}
+        .inbox-header{display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.3rem}
+        .inbox-name{color:var(--text);font-size:0.9rem}
+        .inbox-email{color:var(--text2);font-size:0.8rem}
+        .inbox-date{color:var(--text3);font-size:0.7rem;margin-left:auto;font-family:var(--mono)}
+        .inbox-subject{color:var(--text2);font-size:0.82rem;margin-bottom:0.2rem}
+        .inbox-message{color:var(--text2);font-size:0.85rem;line-height:1.5;word-break:break-word}
+        .btn-mark-read{
+            padding:0.2rem 0.6rem;border:1px solid var(--border2);border-radius:4px;
+            background:transparent;color:var(--text3);font-size:0.7rem;cursor:pointer;transition:all 0.2s;flex-shrink:0;
         }
-        .inbox-name { color: var(--text); font-size: 0.9rem; }
-        .inbox-email { color: var(--text2); font-size: 0.8rem; }
-        .inbox-date { color: var(--text3); font-size: 0.7rem; margin-left: auto; font-family: var(--mono); }
-        .inbox-subject {
-            color: var(--text2);
-            font-size: 0.82rem;
-            margin-bottom: 0.2rem;
-        }
-        .inbox-message {
-            color: var(--text2);
-            font-size: 0.85rem;
-            line-height: 1.5;
-            word-break: break-word;
-        }
-        .btn-mark-read {
-            padding: 0.2rem 0.6rem;
-            border: 1px solid var(--border2);
-            border-radius: 4px;
-            background: transparent;
-            color: var(--text3);
-            font-size: 0.7rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            flex-shrink: 0;
-        }
-        .btn-mark-read:hover {
-            border-color: var(--green);
-            color: var(--green);
-        }
-        .inbox-footer {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 1rem;
-            padding-top: 0.75rem;
-            border-top: 1px solid var(--border);
-            font-size: 0.78rem;
-            color: var(--text3);
+        .btn-mark-read:hover{border-color:var(--green);color:var(--green)}
+        .inbox-footer{
+            display:flex;justify-content:space-between;margin-top:1rem;padding-top:0.75rem;
+            border-top:1px solid var(--border);font-size:0.78rem;color:var(--text3);
         }
 
-        /* ── TOAST STYLES ── */
-        .toast-container {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            max-width: 360px;
-        }
-        .toast {
-            padding: 12px 16px;
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            color: var(--text);
-            font-size: 0.85rem;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            animation: slideIn 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .toast.success { border-color: var(--green); }
-        .toast.info { border-color: var(--accent); }
-        .toast.error { border-color: var(--red); }
+        /* Toast */
+        .toast-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:360px}
+        .toast{padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.85rem;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:slideIn 0.3s ease;display:flex;align-items:center;gap:8px}
+        .toast.success{border-color:var(--green)}
+        .toast.info{border-color:var(--accent)}
+        .toast.error{border-color:var(--red)}
 
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(20px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 
         @media (max-width:768px){
             .form-grid{grid-template-columns:1fr}
             .form-grid .span-2{grid-column:1}
             .admin-header{flex-direction:column;align-items:stretch;text-align:center}
-            .admin-nav{justify-content:center;}
+            .admin-nav{justify-content:center}
             .card-header-inbox{flex-direction:column;align-items:stretch}
             .inbox-header{flex-direction:column;align-items:flex-start}
             .inbox-date{margin-left:0}
@@ -666,9 +606,7 @@ $current_date = date('M j, Y');
 <body>
 
 <?php if (!is_authenticated()): ?>
-<!-- ============================================ -->
-<!-- LOGIN FORM -->
-<!-- ============================================ -->
+<!-- Login Form -->
 <div class="login-wrap">
     <div class="login-card">
         <h2>🔐 Admin Login</h2>
@@ -697,19 +635,12 @@ $current_date = date('M j, Y');
 
 <?php else: ?>
 
-<!-- ============================================ -->
-<!-- ADMIN DASHBOARD -->
-<!-- ============================================ -->
+<!-- Dashboard -->
 <header class="admin-header">
-    <div class="admin-logo">
-        <span>🔒</span> Portfolio Admin
-    </div>
-    
+    <div class="admin-logo"><span>🔒</span> Portfolio Admin</div>
     <nav class="admin-nav">
         <a href="admin.php" class="active">📊 Dashboard</a>
         <a href="index.html" class="back-link">← View Portfolio</a>
-        
-        <!-- Logout Form -->
         <form method="POST" style="margin:0">
             <input type="hidden" name="action" value="logout" />
             <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>" />
@@ -720,9 +651,7 @@ $current_date = date('M j, Y');
 
 <div class="admin-body">
 
-    <!-- ============================================ -->
-    <!-- STATS - Dashboard Overview -->
-    <!-- ============================================ -->
+    <!-- Stats -->
     <div class="stats-row">
         <div class="stat-card">
             <span class="stat-num" id="todayVisitors"><?= number_format($visitors_today) ?></span>
@@ -750,30 +679,18 @@ $current_date = date('M j, Y');
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- STATUS MESSAGES -->
-    <!-- ============================================ -->
+    <!-- Status Messages -->
     <?php if ($statusMsg): ?>
-    <div class="status-msg <?= $statusType ?>">
-        <?= htmlspecialchars($statusMsg) ?>
-    </div>
+    <div class="status-msg <?= $statusType ?>"><?= htmlspecialchars($statusMsg) ?></div>
     <?php endif ?>
 
-    <!-- ============================================ -->
-    <!-- PROJECTS MANAGEMENT -->
-    <!-- ============================================ -->
+    <!-- Projects -->
     <div class="card">
         <p class="card-title">📁 Manage Projects</p>
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr>
-                        <th>Icon</th>
-                        <th>Title</th>
-                        <th>Tags</th>
-                        <th>Order</th>
-                        <th>Actions</th>
-                    </tr>
+                    <tr><th>Icon</th><th>Title</th><th>Tags</th><th>Order</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach ($projects as $p): ?>
@@ -793,74 +710,54 @@ $current_date = date('M j, Y');
                     </tr>
                     <?php endforeach ?>
                     <?php if (empty($projects)): ?>
-                    <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:2rem">
-                        📂 No projects yet. Add one below!
-                    </td></tr>
+                    <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:2rem">📂 No projects yet. Add one below!</td></tr>
                     <?php endif ?>
                 </tbody>
             </table>
         </div>
 
-        <!-- ============================================ -->
-        <!-- ADD PROJECT FORM -->
-        <!-- ============================================ -->
+        <!-- Add Project Form -->
         <div style="margin-top:2rem;border-top:1px solid var(--border);padding-top:1.5rem">
-            <p style="font-size:0.85rem;font-weight:600;color:var(--text2);margin-bottom:1rem">
-                ➕ Add New Project
-            </p>
+            <p style="font-size:0.85rem;font-weight:600;color:var(--text2);margin-bottom:1rem">➕ Add New Project</p>
             <form method="POST">
                 <input type="hidden" name="action" value="add_project" />
                 <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>" />
-                
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="title">Title *</label>
-                        <input type="text" name="title" id="title" required 
-                               placeholder="My Awesome Project" maxlength="100" />
+                        <input type="text" name="title" id="title" required placeholder="My Awesome Project" maxlength="100" />
                     </div>
-                    
                     <div class="form-group">
                         <label for="icon">Icon (emoji)</label>
                         <input type="text" name="icon" id="icon" placeholder="🛠️" maxlength="4" />
                     </div>
-                    
                     <div class="form-group span-2">
                         <label for="description">Description</label>
-                        <textarea name="description" id="description" rows="3" 
-                                  placeholder="What this project does..." maxlength="500"></textarea>
+                        <textarea name="description" id="description" rows="3" placeholder="What this project does..." maxlength="500"></textarea>
                     </div>
-                    
                     <div class="form-group">
                         <label for="tags">Tags (comma-separated)</label>
                         <input type="text" name="tags" id="tags" placeholder="PHP,SQL,JavaScript" maxlength="200" />
                     </div>
-                    
                     <div class="form-group">
                         <label for="sort_order">Sort order</label>
                         <input type="number" name="sort_order" id="sort_order" value="10" min="0" max="999" />
                     </div>
-                    
                     <div class="form-group">
                         <label for="github_url">GitHub URL</label>
-                        <input type="url" name="github_url" id="github_url" 
-                               placeholder="https://github.com/..." maxlength="255" />
+                        <input type="url" name="github_url" id="github_url" placeholder="https://github.com/..." maxlength="255" />
                     </div>
-                    
                     <div class="form-group">
                         <label for="demo_url">Demo URL</label>
-                        <input type="url" name="demo_url" id="demo_url" 
-                               placeholder="https://..." maxlength="255" />
+                        <input type="url" name="demo_url" id="demo_url" placeholder="https://..." maxlength="255" />
                     </div>
                 </div>
-                
                 <button type="submit" class="btn-add">➕ Add Project</button>
             </form>
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- MESSAGES INBOX - Live Feed -->
-    <!-- ============================================ -->
+    <!-- Messages Inbox -->
     <div class="card" id="inbox-card">
         <div class="card-header-inbox">
             <p class="card-title" style="margin-bottom:0">📬 Messages Inbox <span class="unread-badge <?= $unread_count === 0 ? 'zero' : '' ?>" id="unreadBadge"><?= $unread_count ?></span></p>
@@ -900,24 +797,16 @@ $current_date = date('M j, Y');
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- QUICK ACTIONS -->
-    <!-- ============================================ -->
+    <!-- Quick Actions -->
     <div class="card" style="border-color:var(--border2);">
         <p class="card-title">⚡ Quick Actions</p>
         <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-            <a href="index.html" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">
-                🌐 View Portfolio
-            </a>
-            <a href="#" onclick="window.location.reload();" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">
-                🔄 Refresh Dashboard
-            </a>
+            <a href="index.html" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">🌐 View Portfolio</a>
+            <a href="#" onclick="window.location.reload();" style="background:var(--bg3);padding:0.75rem 1.5rem;border-radius:var(--radius);border:1px solid var(--border);display:inline-flex;align-items:center;gap:0.5rem;color:var(--text2);transition:all 0.2s;">🔄 Refresh Dashboard</a>
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- SECURITY FOOTER -->
-    <!-- ============================================ -->
+    <!-- Security Footer -->
     <div style="text-align:center;font-size:0.75rem;color:var(--text3);border-top:1px solid var(--border);padding-top:1rem">
         🔒 CSRF Protected • Rate Limiting (5/15min) • Session Security • Input Validation
         <br>⏱ Session expires after 1 hour of inactivity
@@ -928,130 +817,87 @@ $current_date = date('M j, Y');
 
 <?php endif; ?>
 
-<!-- ============================================ -->
-<!-- JAVASCRIPT - LIVE CLOCK & FUNCTIONALITY -->
-<!-- ============================================ -->
+<!-- JavaScript -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     
-    // ============================================
-    // LIVE CLOCK - Updates every second
-    // ============================================
+    // Live Clock
     function updateClock() {
         const now = new Date();
-        
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         const seconds = String(now.getSeconds()).padStart(2, '0');
-        
         const timeString = hours + ':' + minutes + ':' + seconds;
-        
         const clockElement = document.getElementById('liveClock');
-        if (clockElement) {
-            clockElement.textContent = timeString;
-        }
-        
+        if (clockElement) clockElement.textContent = timeString;
         const dateElement = document.getElementById('currentDate');
         if (dateElement) {
-            const options = { month: 'short', day: 'numeric', year: 'numeric' };
-            const dateString = now.toLocaleDateString('en-US', options);
-            dateElement.textContent = dateString;
+            dateElement.textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         }
     }
-    
     updateClock();
     setInterval(updateClock, 1000);
 
     <?php if (is_authenticated()): ?>
     // ============================================
-    // INBOX AUTO-REFRESH (every 15 seconds)
+    // INBOX AUTO-REFRESH
     // ============================================
     let lastMessageId = <?= !empty($messages) ? (int)$messages[0]['id'] : 0 ?>;
     let pollingInterval = null;
 
     function refreshInbox() {
-        const url = `php/messages.php?since_id=${lastMessageId}&limit=20`;
-        
-        fetch(url)
+        fetch(`php/messages.php?since_id=${lastMessageId}&limit=20`)
             .then(res => res.json())
             .then(data => {
                 if (data.success && data.messages && data.messages.length > 0) {
-                    // Update unread badge
                     const badge = document.getElementById('unreadBadge');
                     if (badge) {
                         badge.textContent = data.unread_count;
                         badge.classList.toggle('zero', data.unread_count === 0);
                     }
-                    
-                    // Update unread count stat
                     const unreadStat = document.getElementById('unreadCount');
-                    if (unreadStat) {
-                        unreadStat.textContent = data.unread_count;
-                    }
+                    if (unreadStat) unreadStat.textContent = data.unread_count;
                     
-                    // Update last message ID
                     if (data.latest_id > lastMessageId) {
                         lastMessageId = data.latest_id;
                     }
                     
-                    // Prepend new messages to the inbox
                     const container = document.getElementById('inboxContainer');
                     if (container) {
-                        // Remove "no messages" placeholder
                         const placeholder = container.querySelector('p[style*="text-align:center"]');
-                        if (placeholder && data.messages.length > 0) {
-                            placeholder.remove();
-                        }
+                        if (placeholder && data.messages.length > 0) placeholder.remove();
                         
-                        // Add new messages at the top
                         let hasNew = false;
                         data.messages.forEach(msg => {
-                            // Check if message already exists
-                            const existing = container.querySelector(`.inbox-item[data-id="${msg.id}"]`);
-                            if (!existing) {
+                            if (!container.querySelector(`.inbox-item[data-id="${msg.id}"]`)) {
                                 hasNew = true;
-                                const item = createInboxItem(msg);
-                                container.prepend(item);
+                                container.prepend(createInboxItem(msg));
                             }
                         });
                         
-                        // Update count
                         const countEl = document.getElementById('inboxCount');
                         if (countEl) {
-                            const totalItems = container.querySelectorAll('.inbox-item').length;
-                            countEl.textContent = `${totalItems} messages`;
+                            countEl.textContent = `${container.querySelectorAll('.inbox-item').length} messages`;
                         }
                         
-                        // Show notification if new messages
-                        if (hasNew) {
-                            showToast('📬 New message received!', 'success');
-                        }
+                        if (hasNew) showToast('📬 New message received!', 'success');
                     }
                 }
-                
-                // Update status text
                 const statusEl = document.getElementById('inboxStatus');
                 if (statusEl) {
-                    const now = new Date();
-                    statusEl.textContent = `Auto-refresh every 15s • Last update: ${now.toLocaleTimeString()}`;
+                    statusEl.textContent = `Auto-refresh every 15s • Last update: ${new Date().toLocaleTimeString()}`;
                 }
             })
-            .catch(err => {
-                console.error('Inbox refresh error:', err);
-            });
+            .catch(err => console.error('Inbox refresh error:', err));
     }
 
     function createInboxItem(msg) {
         const div = document.createElement('div');
         div.className = `inbox-item ${msg.is_read ? 'read' : 'unread'}`;
         div.dataset.id = msg.id;
-        
         const isUnread = !msg.is_read;
-        
         div.innerHTML = `
-            <div class="inbox-status">
-                <span class="status-dot ${isUnread ? 'unread-dot' : 'read-dot'}"></span>
-            </div>
+            <div class="inbox-status"><span class="status-dot ${isUnread ? 'unread-dot' : 'read-dot'}"></span></div>
             <div class="inbox-content">
                 <div class="inbox-header">
                     <strong class="inbox-name">${escapeHtml(msg.name)}</strong>
@@ -1063,8 +909,6 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             ${isUnread ? `<button class="btn-mark-read" data-id="${msg.id}">Mark read</button>` : ''}
         `;
-        
-        // Add mark read handler
         const markBtn = div.querySelector('.btn-mark-read');
         if (markBtn) {
             markBtn.addEventListener('click', function(e) {
@@ -1072,7 +916,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 markAsRead(this.dataset.id);
             });
         }
-        
         return div;
     }
 
@@ -1084,120 +927,90 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function markAsRead(id) {
         const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
-        
         const formData = new FormData();
         formData.append('action', 'mark_read');
         formData.append('id', id);
         formData.append('csrf_token', csrfToken);
         
-        fetch('admin.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                const item = document.querySelector(`.inbox-item[data-id="${id}"]`);
-                if (item) {
-                    item.classList.remove('unread');
-                    item.classList.add('read');
-                    const dot = item.querySelector('.status-dot');
-                    if (dot) {
-                        dot.className = 'status-dot read-dot';
+        fetch('admin.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const item = document.querySelector(`.inbox-item[data-id="${id}"]`);
+                    if (item) {
+                        item.classList.remove('unread');
+                        item.classList.add('read');
+                        const dot = item.querySelector('.status-dot');
+                        if (dot) dot.className = 'status-dot read-dot';
+                        const markBtn = item.querySelector('.btn-mark-read');
+                        if (markBtn) markBtn.remove();
+                        
+                        const badge = document.getElementById('unreadBadge');
+                        if (badge) {
+                            const current = parseInt(badge.textContent) || 0;
+                            badge.textContent = Math.max(0, current - 1);
+                            badge.classList.toggle('zero', badge.textContent === '0');
+                        }
+                        const unreadStat = document.getElementById('unreadCount');
+                        if (unreadStat) {
+                            const current = parseInt(unreadStat.textContent) || 0;
+                            unreadStat.textContent = Math.max(0, current - 1);
+                        }
+                        updateMarkAllButton();
                     }
-                    const markBtn = item.querySelector('.btn-mark-read');
-                    if (markBtn) markBtn.remove();
-                    
-                    // Update badge
-                    const badge = document.getElementById('unreadBadge');
-                    if (badge) {
-                        const current = parseInt(badge.textContent) || 0;
-                        const newCount = Math.max(0, current - 1);
-                        badge.textContent = newCount;
-                        badge.classList.toggle('zero', newCount === 0);
-                    }
-                    
-                    // Update unread stat
-                    const unreadStat = document.getElementById('unreadCount');
-                    if (unreadStat) {
-                        const current = parseInt(unreadStat.textContent) || 0;
-                        unreadStat.textContent = Math.max(0, current - 1);
-                    }
-                    
-                    // Update mark all button
-                    updateMarkAllButton();
                 }
-            }
-        })
-        .catch(err => console.error('Mark read error:', err));
+            })
+            .catch(err => console.error('Mark read error:', err));
     }
 
     function updateMarkAllButton() {
         const badge = document.getElementById('unreadBadge');
         const markAllBtn = document.getElementById('markAllRead');
         const unreadCount = parseInt(badge?.textContent || 0);
-        
-        if (unreadCount === 0) {
-            if (markAllBtn) markAllBtn.style.display = 'none';
-        } else {
-            if (markAllBtn) markAllBtn.style.display = 'inline-block';
+        if (markAllBtn) {
+            markAllBtn.style.display = unreadCount === 0 ? 'none' : 'inline-block';
         }
     }
 
-    // Mark all read
     document.getElementById('markAllRead')?.addEventListener('click', function() {
         const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
-        
         const formData = new FormData();
         formData.append('action', 'mark_all_read');
         formData.append('csrf_token', csrfToken);
         
-        fetch('admin.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                document.querySelectorAll('.inbox-item.unread').forEach(item => {
-                    item.classList.remove('unread');
-                    item.classList.add('read');
-                    const dot = item.querySelector('.status-dot');
-                    if (dot) {
-                        dot.className = 'status-dot read-dot';
-                    }
-                    const markBtn = item.querySelector('.btn-mark-read');
-                    if (markBtn) markBtn.remove();
-                });
-                const badge = document.getElementById('unreadBadge');
-                if (badge) {
-                    badge.textContent = '0';
-                    badge.classList.add('zero');
+        fetch('admin.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    document.querySelectorAll('.inbox-item.unread').forEach(item => {
+                        item.classList.remove('unread');
+                        item.classList.add('read');
+                        const dot = item.querySelector('.status-dot');
+                        if (dot) dot.className = 'status-dot read-dot';
+                        const markBtn = item.querySelector('.btn-mark-read');
+                        if (markBtn) markBtn.remove();
+                    });
+                    const badge = document.getElementById('unreadBadge');
+                    if (badge) { badge.textContent = '0'; badge.classList.add('zero'); }
+                    const unreadStat = document.getElementById('unreadCount');
+                    if (unreadStat) unreadStat.textContent = '0';
+                    updateMarkAllButton();
+                    showToast('✓ All messages marked as read', 'success');
                 }
-                const unreadStat = document.getElementById('unreadCount');
-                if (unreadStat) {
-                    unreadStat.textContent = '0';
-                }
-                updateMarkAllButton();
-                showToast('✓ All messages marked as read', 'success');
-            }
-        })
-        .catch(err => console.error('Mark all read error:', err));
+            })
+            .catch(err => console.error('Mark all read error:', err));
     });
 
-    // Manual refresh button
     document.getElementById('refreshInbox')?.addEventListener('click', refreshInbox);
 
-    // Start polling
     function startPolling() {
         setTimeout(refreshInbox, 1000);
         pollingInterval = setInterval(refreshInbox, 15000);
     }
-
     startPolling();
 
     // ============================================
-    // VISITOR COUNTER AUTO-REFRESH (every 30s)
+    // VISITOR COUNTER AUTO-REFRESH
     // ============================================
     function refreshVisitors() {
         fetch('php/visitor.php')
@@ -1206,11 +1019,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     const todayEl = document.getElementById('todayVisitors');
                     if (todayEl) {
-                        animateNumber(todayEl, parseInt(todayEl.textContent.replace(/,/g, '')), data.today, 600);
+                        animateNumber(todayEl, parseInt(todayEl.textContent.replace(/,/g, '')) || 0, data.today, 600);
                     }
                     const totalEl = document.getElementById('totalVisitors');
                     if (totalEl) {
-                        animateNumber(totalEl, parseInt(totalEl.textContent.replace(/,/g, '')), data.total, 600);
+                        animateNumber(totalEl, parseInt(totalEl.textContent.replace(/,/g, '')) || 0, data.total, 600);
                     }
                 }
             })
@@ -1222,16 +1035,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const start = performance.now();
         function step(now) {
             const progress = Math.min((now - start) / duration, 1);
-            const value = Math.round(from + (to - from) * easeOut(progress));
+            const value = Math.round(from + (to - from) * (1 - Math.pow(1 - progress, 3)));
             el.textContent = value.toLocaleString();
             if (progress < 1) requestAnimationFrame(step);
         }
         requestAnimationFrame(step);
     }
 
-    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
-
-    // Refresh visitors every 30 seconds
     setInterval(refreshVisitors, 30000);
 
     // ============================================
@@ -1244,13 +1054,10 @@ document.addEventListener('DOMContentLoaded', function() {
             container.className = 'toast-container';
             document.body.appendChild(container);
         }
-        
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
-        
         container.appendChild(toast);
-        
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateX(20px)';
@@ -1262,9 +1069,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ============================================
     // CSRF TOKEN LOGGING
     // ============================================
-    const forms = document.querySelectorAll('form');
     console.log('🔒 CSRF Protection Active');
-    console.log('📝 Forms found:', forms.length);
     <?php endif; ?>
 });
 </script>

@@ -1,16 +1,18 @@
 -- ═══════════════════════════════════════════════════════════
 --  KARAN OLI PORTFOLIO — database.sql
---  Run this once to create all required tables.
---  Usage: mysql -u root -p < database.sql
+--  Complete database schema with security optimizations
 -- ═══════════════════════════════════════════════════════════
 
+-- Create database with proper charset
 CREATE DATABASE IF NOT EXISTS portfolio_db
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
 USE portfolio_db;
 
--- ── contacts: stores form submissions ──────────────────────
+-- ─────────────────────────────────────────────────────────────
+-- 1. CONTACTS TABLE — Stores form submissions
+-- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS contacts (
   id           INT UNSIGNED    NOT NULL AUTO_INCREMENT,
   name         VARCHAR(100)    NOT NULL,
@@ -28,7 +30,9 @@ CREATE TABLE IF NOT EXISTS contacts (
   INDEX idx_read_status (is_read, submitted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── visitors: page view counter (unique daily visitors) ──
+-- ─────────────────────────────────────────────────────────────
+-- 2. VISITORS TABLE — Unique daily visitor tracking
+-- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS visitors (
   id           INT UNSIGNED    NOT NULL AUTO_INCREMENT,
   ip_address   VARCHAR(45)     DEFAULT NULL,
@@ -40,7 +44,9 @@ CREATE TABLE IF NOT EXISTS visitors (
   INDEX idx_date (visited_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── projects: dynamic project management (optional CMS) ────
+-- ─────────────────────────────────────────────────────────────
+-- 3. PROJECTS TABLE — Dynamic project management
+-- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS projects (
   id           INT UNSIGNED    NOT NULL AUTO_INCREMENT,
   title        VARCHAR(150)    NOT NULL,
@@ -57,7 +63,9 @@ CREATE TABLE IF NOT EXISTS projects (
   INDEX idx_visible_sort (is_visible, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ── Sample project data ─────────────────────────────────────
+-- ─────────────────────────────────────────────────────────────
+-- 4. SAMPLE DATA — Insert initial projects
+-- ─────────────────────────────────────────────────────────────
 INSERT INTO projects (title, description, tags, github_url, demo_url, icon, sort_order) VALUES
 ('E-Commerce Web App',
  'Full-stack shopping site with cart, auth, and normalized MySQL schema.',
@@ -95,5 +103,15 @@ INSERT INTO projects (title, description, tags, github_url, demo_url, icon, sort
  'https://github.com/karanoli',
  NULL, '💬', 6);
 
--- ── Verify tables created ───────────────────────────────────
+-- ─────────────────────────────────────────────────────────────
+-- 5. VERIFY TABLES
+-- ─────────────────────────────────────────────────────────────
 SHOW TABLES;
+
+-- Show table structures
+DESCRIBE contacts;
+DESCRIBE visitors;
+DESCRIBE projects;
+
+-- Show sample data
+SELECT * FROM projects ORDER BY sort_order;
