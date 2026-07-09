@@ -1,6 +1,7 @@
 <?php
 /**
  * KARAN OLI PORTFOLIO - Contact Form Handler
+ * Using PHPMailer for email delivery
  */
 
 error_reporting(0);
@@ -23,6 +24,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+// Rate limiting
 $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 $rateKey = 'contact_' . md5($ip);
 
@@ -113,7 +115,7 @@ function sendWithPHPMailer($name, $email, $subject, $message) {
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
         $mail->Username   = 'chhetrikaran.147@gmail.com';
-        $mail->Password   = 'utlxvaiovxfxohaf'; // ← YOUR APP PASSWORD
+        $mail->Password   = 'utlxvaiovxfxohaf'; // ← YOUR APP PASSWORD IS HERE
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
 

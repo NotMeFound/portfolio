@@ -1,6 +1,6 @@
 /**
  * KARAN OLI PORTFOLIO — main.js
- * Complete production-ready JavaScript
+ * Complete working version with mobile support
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -27,6 +27,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (themeIcon) {
       themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
     }
+    // Update mobile theme icon
+    const mobileThemeIcon = document.getElementById('mobile-theme-icon');
+    if (mobileThemeIcon) {
+      mobileThemeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
+    }
   }
 
   /* ═══════════════════════════════════
@@ -39,16 +44,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (viewToggle) {
     viewToggle.addEventListener('click', () => {
-      isQuick = !isQuick;
-      document.body.classList.toggle('quickscan-mode', isQuick);
-      if (qsBanner) qsBanner.classList.toggle('active', isQuick);
-      viewToggle.classList.toggle('active', isQuick);
-      if (viewLabel) viewLabel.textContent = isQuick ? 'Deep Dive' : 'Quick Scan';
+      toggleViewMode();
     });
   }
 
+  function toggleViewMode() {
+    isQuick = !isQuick;
+    document.body.classList.toggle('quickscan-mode', isQuick);
+    if (qsBanner) qsBanner.classList.toggle('active', isQuick);
+    viewToggle?.classList.toggle('active', isQuick);
+    if (viewLabel) viewLabel.textContent = isQuick ? 'Deep Dive' : 'Quick Scan';
+    
+    // Update mobile view toggle
+    const mobileViewToggle = document.getElementById('mobile-view-toggle');
+    const mobileViewLabel = document.getElementById('mobile-view-label');
+    if (mobileViewToggle) mobileViewToggle.classList.toggle('active', isQuick);
+    if (mobileViewLabel) mobileViewLabel.textContent = isQuick ? 'Deep Dive' : 'Quick Scan';
+  }
+
   /* ═══════════════════════════════════
-     3. STICKY NAV
+     3. MOBILE ACTIONS
+  ═══════════════════════════════════ */
+  const mobileThemeBtn = document.getElementById('mobile-theme-btn');
+  if (mobileThemeBtn) {
+    mobileThemeBtn.addEventListener('click', () => {
+      const next = htmlEl.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem('ko-theme', next);
+    });
+  }
+
+  const mobileViewToggle = document.getElementById('mobile-view-toggle');
+  if (mobileViewToggle) {
+    mobileViewToggle.addEventListener('click', toggleViewMode);
+  }
+
+  /* ═══════════════════════════════════
+     4. STICKY NAV
   ═══════════════════════════════════ */
   const navHeader = document.getElementById('nav-header');
   window.addEventListener('scroll', () => {
@@ -58,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: true });
 
   /* ═══════════════════════════════════
-     4. MOBILE HAMBURGER
+     5. MOBILE HAMBURGER
   ═══════════════════════════════════ */
   const hamburger = document.getElementById('hamburger');
   const mobileMenu = document.getElementById('mobile-menu');
@@ -66,15 +98,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (hamburger && mobileMenu) {
     hamburger.addEventListener('click', () => {
       mobileMenu.classList.toggle('open');
+      hamburger.classList.toggle('active');
     });
 
     mobileMenu.querySelectorAll('a').forEach(a => {
-      a.addEventListener('click', () => mobileMenu.classList.remove('open'));
+      a.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('active');
+      });
     });
   }
 
   /* ═══════════════════════════════════
-     5. TYPEWRITER EFFECT
+     6. TYPEWRITER EFFECT
   ═══════════════════════════════════ */
   const roles = [
     'Full-Stack Developer',
@@ -113,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     6. SKILL BARS
+     7. SKILL BARS
   ═══════════════════════════════════ */
   const fills = document.querySelectorAll('.skill-fill');
   if (fills.length) {
@@ -134,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     7. PROJECT FILTER
+     8. PROJECT FILTER
   ═══════════════════════════════════ */
   const filterBtns = document.querySelectorAll('.filter-btn');
   const projectCards = document.querySelectorAll('.project-card');
@@ -166,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     8. TERMINAL WIDGET
+     9. TERMINAL WIDGET
   ═══════════════════════════════════ */
   const termInput = document.getElementById('terminal-input');
   const termOutput = document.getElementById('terminal-output');
@@ -212,8 +248,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     contact: () => [
       { text: 'Email:    chhetrikaran.147@gmail.com', type: 'response' },
-      { text: 'GitHub:   https://github.com/NotMeFound', type: 'response' },
-      { text: 'https://www.linkedin.com/in/karan-chhetri-919b803b7', type: 'response' },
+      { text: 'GitHub:   github.com/NotMeFound', type: 'response' },
+      { text: 'LinkedIn: linkedin.com/in/karan-chhetri-919b803b7', type: 'response' },
       { text: 'Location: Nepal — open to remote', type: 'response' },
     ],
     hire: () => [
@@ -233,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     github: () => [
       { text: 'Opening GitHub profile...', type: 'response success' },
-      { text: 'https://github.com/karanoli', type: 'response' },
+      { text: 'https://github.com/NotMeFound', type: 'response' },
     ],
     clear: () => '__clear__',
   };
@@ -292,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     9. CONTACT FORM - Production Ready
+     10. CONTACT FORM - Working Version
   ═══════════════════════════════════ */
   const form = document.getElementById('contact-form');
   const statusEl = document.getElementById('form-status');
@@ -301,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLoading = submitBtn?.querySelector('.btn-loading');
 
   if (form) {
-    // Real-time validation on input
+    // Real-time validation
     const inputs = form.querySelectorAll('input, textarea');
     inputs.forEach(input => {
       input.addEventListener('input', function() {
@@ -319,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Get form data
       const formData = new FormData(this);
       
-      // Simple validation
+      // Validate
       const name = formData.get('name')?.trim() || '';
       const email = formData.get('email')?.trim() || '';
       const subject = formData.get('subject')?.trim() || '';
@@ -355,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Show loading state
+      // Show loading
       if (submitBtn) submitBtn.disabled = true;
       if (btnText) btnText.hidden = true;
       if (btnLoading) btnLoading.hidden = false;
@@ -363,9 +399,8 @@ document.addEventListener('DOMContentLoaded', () => {
       hideStatus();
 
       try {
-        // Use fetch with timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await fetch('php/send-message.php', {
           method: 'POST',
@@ -384,9 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (subjectField) subjectField.value = '';
         } else {
           if (response.status === 429) {
-            showStatus('Too many messages. Please wait an hour before sending again.', 'error');
-          } else if (response.status === 422) {
-            showStatus(result.error || 'Please check your input and try again.', 'error');
+            showStatus('Too many messages. Please wait an hour.', 'error');
           } else {
             showStatus(result.error || 'Failed to send message. Please try again.', 'error');
           }
@@ -394,7 +427,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (error) {
         console.error('Contact form error:', error);
         if (error.name === 'AbortError') {
-          showStatus('Request timed out. Please check your connection and try again.', 'error');
+          showStatus('Request timed out. Please check your connection.', 'error');
         } else {
           showStatus('Network error. Please check your connection and try again.', 'error');
         }
@@ -423,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (type === 'success') {
         setTimeout(() => {
           if (statusEl) statusEl.hidden = true;
-        }, 5000);
+        }, 6000);
       }
     }
   }
@@ -436,7 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /* ═══════════════════════════════════
-     10. VISITOR COUNTER
+     11. VISITOR COUNTER
   ═══════════════════════════════════ */
   const counterEl = document.getElementById('visitor-count');
 
@@ -469,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadVisitorCount();
 
   /* ═══════════════════════════════════
-     11. SMOOTH SCROLL
+     12. SMOOTH SCROLL
   ═══════════════════════════════════ */
   document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', (e) => {
