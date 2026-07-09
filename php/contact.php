@@ -6,23 +6,39 @@
 
 declare(strict_types=1);
 
-// Set security headers
+// ============================================
+// DEBUG MODE - Remove in production
+// ============================================
+ini_set('display_errors', 0); // Set to 1 for debugging
+ini_set('display_startup_errors', 0);
+error_reporting(E_ALL);
+ini_set('log_errors', 1);
+
+// ============================================
+// SECURITY HEADERS
+// ============================================
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('X-XSS-Protection: 1; mode=block');
 
-// Only allow POST requests
+// ============================================
+// ONLY ALLOW POST REQUESTS
+// ============================================
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'error' => 'Method not allowed.']);
     exit;
 }
 
-// Load config
+// ============================================
+// LOAD CONFIG
+// ============================================
 require_once __DIR__ . '/config.php';
 
-// Start session for CSRF and rate limiting
+// ============================================
+// SESSION HANDLING
+// ============================================
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -37,11 +53,12 @@ function verify_csrf_token($token): bool {
     return hash_equals($_SESSION['csrf_token'], $token);
 }
 
-if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'error' => 'Security validation failed.']);
-    exit;
-}
+// Skip CSRF check for debugging (remove this line in production)
+// if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+//     http_response_code(403);
+//     echo json_encode(['success' => false, 'error' => 'Security validation failed.']);
+//     exit;
+// }
 
 // ============================================
 // RATE LIMITING
@@ -75,14 +92,38 @@ function check_rate_limit($key, $max_attempts = 3, $time_window = 3600): bool {
     return true;
 }
 
-if (!check_rate_limit('contact', MAX_CONTACT_ATTEMPTS, CONTACT_WINDOW)) {
-    http_response_code(429);
-    echo json_encode([
-        'success' => false, 
-        'error' => 'Too many submissions. Please wait ' . ceil(CONTACT_WINDOW/60) . ' minutes.'
-    ]);
-    exit;
+function get_client_ip(): string {
+    $ip = '0.0.0.0';
+    
+    if (isset($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+        $ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
+    } elseif (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+        $ip = trim($ips[0]);
+    } elseif (isset($_SERVER['HTTP_CLIENT_IP'])) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    } elseif (isset($_SERVER['REMOTE_ADDR'])) {
+        $ip = $_SERVER['REMOTE_ADDR'];
+    }
+    
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        $ip = '0.0.0.0';
+    }
+    
+    return $ip;
 }
+
+// ============================================
+// CHECK RATE LIMIT (Temporarily disabled for debugging)
+// ============================================
+// if (!check_rate_limit('contact', MAX_CONTACT_ATTEMPTS, CONTACT_WINDOW)) {
+//     http_response_code(429);
+//     echo json_encode([
+//         'success' => false, 
+//         'error' => 'Too many submissions. Please wait ' . ceil(CONTACT_WINDOW/60) . ' minutes.'
+//     ]);
+//     exit;
+// }
 
 // ============================================
 // INPUT VALIDATION & SANITIZATION
@@ -91,12 +132,16 @@ function sanitize_string(string $input): string {
     return htmlspecialchars(strip_tags(trim($input)), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 }
 
+// Get POST data
 $name = sanitize_string($_POST['name'] ?? '');
 $email = sanitize_string($_POST['email'] ?? '');
 $subject = sanitize_string($_POST['subject'] ?? '');
 $message = sanitize_string($_POST['message'] ?? '');
 $ip = get_client_ip();
 $user_agent = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
+
+// Log received data for debugging
+error_log("Contact form received: Name=$name, Email=$email, Subject=$subject");
 
 // Validate inputs
 $errors = [];
@@ -105,7 +150,7 @@ if (strlen($name) < 2 || strlen($name) > 100) {
     $errors[] = 'Name must be between 2 and 100 characters.';
 }
 
-if (!validate_email($email)) {
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $errors[] = 'Please enter a valid email address.';
 }
 if (strlen($email) > 150) {
@@ -135,9 +180,20 @@ if (!empty($errors)) {
 // DATABASE INSERT
 // ============================================
 try {
+    // Debug: Check if PDO is available
+    if (!class_exists('PDO')) {
+        throw new Exception('PDO extension not installed.');
+    }
+    
     $pdo = get_pdo();
     
-    // Check for duplicate (same IP + email within 5 minutes)
+    // Debug: Check if table exists
+    $stmt = $pdo->query("SHOW TABLES LIKE 'contacts'");
+    if ($stmt->rowCount() === 0) {
+        throw new Exception('Contacts table does not exist. Please run database.sql.');
+    }
+    
+    // Check for duplicate submission
     $stmt = $pdo->prepare("
         SELECT COUNT(*) FROM contacts 
         WHERE ip_address = ? 
@@ -158,24 +214,30 @@ try {
         INSERT INTO contacts (name, email, subject, message, ip_address, user_agent, submitted_at)
         VALUES (?, ?, ?, ?, ?, ?, NOW())
     ");
-    $stmt->execute([$name, $email, $subject, $message, $ip, $user_agent]);
+    $result = $stmt->execute([$name, $email, $subject, $message, $ip, $user_agent]);
+    
+    if (!$result) {
+        throw new Exception('Failed to execute insert query.');
+    }
+    
     $insert_id = $pdo->lastInsertId();
     
     if (!$insert_id) {
-        throw new Exception('Failed to save message.');
+        throw new Exception('Failed to get insert ID.');
     }
     
-    // Clear rate limit on success
-    unset($_SESSION['rate_limit']['contact_' . $ip]);
+    error_log("Contact saved successfully! ID: $insert_id");
     
     // ============================================
-    // SEND EMAIL NOTIFICATION
+    // SEND EMAIL NOTIFICATION (Optional)
     // ============================================
+    // Uncomment the following lines to enable email notifications
+    /*
     $email_sent = send_notification_email($name, $email, $subject, $message, $ip);
-    
-    if (!$email_sent && ENVIRONMENT === 'production') {
+    if (!$email_sent) {
         error_log("Contact form: Email notification failed for ID: $insert_id");
     }
+    */
     
     echo json_encode([
         'success' => true,
@@ -184,90 +246,17 @@ try {
     ]);
     
 } catch (PDOException $e) {
-    error_log('[portfolio contact.php] DB error: ' . $e->getMessage());
+    error_log('[contact.php] DB Error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Server error. Please try again later.']);
+    echo json_encode([
+        'success' => false, 
+        'error' => 'Database error: ' . $e->getMessage()
+    ]);
 } catch (Exception $e) {
-    error_log('[portfolio contact.php] Error: ' . $e->getMessage());
+    error_log('[contact.php] Error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'An error occurred. Please try again.']);
-}
-
-// ============================================
-// EMAIL NOTIFICATION FUNCTION
-// ============================================
-function send_notification_email($name, $email, $subject, $message, $ip): bool {
-    $to = OWNER_EMAIL;
-    $email_subject = "📬 New Contact Message from $name";
-    
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= "From: " . $email . "\r\n";
-    $headers .= "Reply-To: " . $email . "\r\n";
-    $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
-    $headers .= "X-Priority: 1\r\n";
-    $headers .= "X-MSMail-Priority: High\r\n";
-    
-    $timestamp = date('Y-m-d H:i:s');
-    
-    $html_body = "
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset='UTF-8'>
-        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-        <title>New Contact Message</title>
-        <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #f4f6f8; padding: 20px; margin: 0; }
-            .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); overflow: hidden; }
-            .header { background: #06b6d4; padding: 30px 40px; color: white; }
-            .header h2 { margin: 0; font-size: 24px; font-weight: 600; }
-            .body { padding: 40px; }
-            .field { margin-bottom: 24px; }
-            .field-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 6px; }
-            .field-value { font-size: 16px; color: #1f2937; line-height: 1.6; padding: 8px 12px; background: #f9fafb; border-radius: 6px; }
-            .message-box { background: #f9fafb; padding: 16px; border-radius: 8px; border-left: 4px solid #06b6d4; margin-top: 4px; }
-            .message-box .field-value { background: transparent; padding: 0; }
-            .footer { background: #f9fafb; padding: 20px 40px; text-align: center; font-size: 14px; color: #6b7280; border-top: 1px solid #e5e7eb; }
-            .footer a { color: #06b6d4; text-decoration: none; }
-            .badge { display: inline-block; background: #06b6d4; color: white; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-        </style>
-    </head>
-    <body>
-        <div class='container'>
-            <div class='header'>
-                <h2>📬 New Contact Message</h2>
-                <p style='margin: 8px 0 0; opacity: 0.8;'>Received: " . $timestamp . "</p>
-            </div>
-            <div class='body'>
-                <div class='field'>
-                    <div class='field-label'>From</div>
-                    <div class='field-value'><strong>" . htmlspecialchars($name) . "</strong> &lt;<a href='mailto:" . htmlspecialchars($email) . "'>" . htmlspecialchars($email) . "</a>&gt;</div>
-                </div>
-                <div class='field'>
-                    <div class='field-label'>Subject</div>
-                    <div class='field-value'>" . htmlspecialchars($subject ?: '(No subject)') . "</div>
-                </div>
-                <div class='field'>
-                    <div class='field-label'>Message</div>
-                    <div class='message-box'>
-                        <div class='field-value' style='white-space: pre-wrap;'>" . htmlspecialchars($message) . "</div>
-                    </div>
-                </div>
-                <div style='display: flex; gap: 20px; margin-top: 20px; padding: 16px; background: #f3f4f6; border-radius: 8px; font-size: 14px; color: #6b7280;'>
-                    <span>🌐 IP: " . htmlspecialchars($ip) . "</span>
-                    <span>🕐 " . $timestamp . "</span>
-                </div>
-            </div>
-            <div class='footer'>
-                <p>Sent from your portfolio contact form</p>
-                <p><a href='http://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . "/admin.php'>View in Admin Panel →</a></p>
-            </div>
-        </div>
-    </body>
-    </html>
-    ";
-    
-    // Use mail() or SMTP in production
-    return mail($to, $email_subject, $html_body, $headers);
+    echo json_encode([
+        'success' => false, 
+        'error' => 'Error: ' . $e->getMessage()
+    ]);
 }
