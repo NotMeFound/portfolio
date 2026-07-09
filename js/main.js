@@ -211,8 +211,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     contact: () => [
       { text: 'Email:    chhetrikaran.147@gmail.com', type: 'response' },
-      { text: 'GitHub:   github.com/karanoli', type: 'response' },
-      { text: 'LinkedIn: linkedin.com/in/karanoli', type: 'response' },
+      { text: 'GitHub:   https://github.com/NotMeFound', type: 'response' },
+      { text: 'LinkedIn: https://www.linkedin.com/in/karan-chhetri-919b803b7', type: 'response' },
       { text: 'Location: Nepal — open to remote', type: 'response' },
     ],
     hire: () => [
@@ -283,64 +283,195 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   /* ═══════════════════════════════════
-     9. AJAX CONTACT FORM
+  /* ═══════════════════════════════════
+     9. CONTACT FORM - Production Ready
   ═══════════════════════════════════ */
-  const form       = document.getElementById('contact-form');
-  const statusEl   = document.getElementById('form-status');
-  const submitBtn  = document.getElementById('submit-btn');
-  const btnText    = submitBtn.querySelector('.btn-text');
+  const form = document.getElementById('contact-form');
+  const statusEl = document.getElementById('form-status');
+  const submitBtn = document.getElementById('submit-btn');
+  const btnText = submitBtn.querySelector('.btn-text');
   const btnLoading = submitBtn.querySelector('.btn-loading');
 
+  // ── Field validation helpers ──────────────────────────────────
+  function validateField(field) {
+    const value = field.value.trim();
+    const errorEl = document.querySelector(`[data-field="${field.name}"]`);
+    let isValid = true;
+    let errorMsg = '';
+
+    // Reset error state
+    field.classList.remove('error');
+    if (errorEl) errorEl.textContent = '';
+
+    switch (field.name) {
+      case 'name':
+        if (!value) {
+          errorMsg = 'Name is required.';
+          isValid = false;
+        } else if (value.length < 2) {
+          errorMsg = 'Name must be at least 2 characters.';
+          isValid = false;
+        } else if (value.length > 100) {
+          errorMsg = 'Name cannot exceed 100 characters.';
+          isValid = false;
+        }
+        break;
+
+      case 'email':
+        if (!value) {
+          errorMsg = 'Email is required.';
+          isValid = false;
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          errorMsg = 'Please enter a valid email address.';
+          isValid = false;
+        } else if (value.length > 100) {
+          errorMsg = 'Email cannot exceed 100 characters.';
+          isValid = false;
+        }
+        break;
+
+      case 'subject':
+        if (!value) {
+          errorMsg = 'Subject is required.';
+          isValid = false;
+        } else if (value.length < 2) {
+          errorMsg = 'Subject must be at least 2 characters.';
+          isValid = false;
+        } else if (value.length > 200) {
+          errorMsg = 'Subject cannot exceed 200 characters.';
+          isValid = false;
+        }
+        break;
+
+      case 'message':
+        if (!value) {
+          errorMsg = 'Message is required.';
+          isValid = false;
+        } else if (value.length < 10) {
+          errorMsg = 'Message must be at least 10 characters.';
+          isValid = false;
+        } else if (value.length > 5000) {
+          errorMsg = 'Message cannot exceed 5000 characters.';
+          isValid = false;
+        }
+        break;
+    }
+
+    if (!isValid && errorEl) {
+      field.classList.add('error');
+      errorEl.textContent = errorMsg;
+    }
+
+    return isValid;
+  }
+
+  // ── Real-time validation on blur ─────────────────────────────
+  form.querySelectorAll('input, textarea').forEach(field => {
+    field.addEventListener('blur', () => validateField(field));
+    field.addEventListener('input', () => {
+      // Clear error on input if valid
+      if (field.classList.contains('error') && validateField(field)) {
+        field.classList.remove('error');
+        const errorEl = document.querySelector(`[data-field="${field.name}"]`);
+        if (errorEl) errorEl.textContent = '';
+      }
+    });
+  });
+
+  // ── Form submission ──────────────────────────────────────────
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // Basic client-side validation
-    const name    = form.name.value.trim();
-    const email   = form.email.value.trim();
-    const message = form.message.value.trim();
-    if (!name || !email || !message) {
-      showStatus('Please fill in all required fields.', 'error');
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showStatus('Please enter a valid email address.', 'error');
+    // ── Validate all fields ────────────────────────────────────
+    let allValid = true;
+    const fields = form.querySelectorAll('input, textarea');
+    fields.forEach(field => {
+      if (!validateField(field)) {
+        allValid = false;
+        field.focus();
+      }
+    });
+
+    if (!allValid) {
+      showStatus('Please fix all errors before submitting.', 'error');
       return;
     }
 
-    // Show loading state
+    // ── Get form data ──────────────────────────────────────────
+    const formData = new FormData(form);
+    const data = {
+      name: formData.get('name').trim(),
+      email: formData.get('email').trim(),
+      subject: formData.get('subject').trim(),
+      message: formData.get('message').trim()
+    };
+
+    // ── Show loading state ─────────────────────────────────────
     submitBtn.disabled = true;
-    btnText.hidden     = true;
-    btnLoading.hidden  = false;
+    btnText.hidden = true;
+    btnLoading.hidden = false;
     hideStatus();
 
-    const data = new FormData(form);
-
     try {
-      const res  = await fetch('php/contact.php', { method: 'POST', body: data });
-      const json = await res.json();
+      // Determine which backend to use
+      const useWeb3Forms = false; // Set to true for Web3Forms, false for PHP
+      let endpoint;
+      let body;
 
-      if (json.success) {
-        showStatus('Message sent! I\'ll get back to you within 24 hours. 🎉', 'success');
-        form.reset();
+      if (useWeb3Forms) {
+        // ── Option 1: Web3Forms (No backend required) ──────────
+        endpoint = 'https://api.web3forms.com/submit';
+        body = new FormData();
+        body.append('access_key', 'YOUR_WEB3FORMS_ACCESS_KEY'); // Get from web3forms.com
+        body.append('name', data.name);
+        body.append('email', data.email);
+        body.append('subject', data.subject);
+        body.append('message', data.message);
       } else {
-        showStatus(json.error || 'Something went wrong. Please email me directly.', 'error');
+        // ── Option 2: PHP Backend ──────────────────────────────
+        endpoint = 'php/send-message.php';
+        body = formData; // Use FormData for file uploads if needed
       }
-    } catch {
-      // If PHP backend not available (static demo), show success anyway for demo
-      showStatus('Message sent! (Demo mode — connect PHP backend for live sending.) 🎉', 'success');
-      form.reset();
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: body
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        showStatus(result.message || 'Message sent successfully! 🎉', 'success');
+        form.reset();
+        // Reset project pre-filled subject
+        const subjectField = document.getElementById('contact-subject');
+        if (subjectField) subjectField.value = '';
+      } else {
+        // Handle specific error responses
+        if (response.status === 429) {
+          showStatus('Too many messages. Please wait an hour before sending again.', 'error');
+        } else if (response.status === 422) {
+          showStatus(result.error || 'Please check your input and try again.', 'error');
+        } else {
+          showStatus(result.error || 'Failed to send message. Please try again.', 'error');
+        }
+      }
+    } catch (error) {
+      console.error('Contact form error:', error);
+      showStatus('Network error. Please check your connection and try again.', 'error');
     } finally {
       submitBtn.disabled = false;
-      btnText.hidden     = false;
-      btnLoading.hidden  = true;
+      btnText.hidden = false;
+      btnLoading.hidden = true;
     }
   });
 
   function showStatus(msg, type) {
     statusEl.textContent = msg;
-    statusEl.className   = 'form-status ' + type;
-    statusEl.hidden      = false;
+    statusEl.className = 'form-status ' + type;
+    statusEl.hidden = false;
   }
+
   function hideStatus() {
     statusEl.hidden = true;
     statusEl.className = 'form-status';
