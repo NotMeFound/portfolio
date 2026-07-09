@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
       { text: 'Scroll to #projects to see full details.', type: 'response muted' },
     ],
     contact: () => [
-      { text: 'Email:    karan.oli@example.com', type: 'response' },
+      { text: 'Email:    chhetrikaran.147@gmail.com', type: 'response' },
       { text: 'GitHub:   github.com/karanoli', type: 'response' },
       { text: 'LinkedIn: linkedin.com/in/karanoli', type: 'response' },
       { text: 'Location: Nepal — open to remote', type: 'response' },
