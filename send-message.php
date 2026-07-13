@@ -28,7 +28,7 @@ $message = htmlspecialchars(trim($_POST['message'] ?? ''), ENT_QUOTES, 'UTF-8');
 // 4. Validation
 if (strlen($name) < 2 || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($message) < 10) {
     http_response_code(422);
-    echo json_encode(['success' => false, 'error' => 'Please fill all fields correctly.']);
+    echo json_encode(['success' => false, 'error' => 'Please fill all fields correctly!']);
     exit;
 }
 

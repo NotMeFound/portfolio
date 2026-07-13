@@ -334,10 +334,10 @@ document.addEventListener('DOMContentLoaded', () => {
           showStatus(result.message, 'success');
           form.reset();
         } else {
-          showStatus(result.error || 'Something went wrong.', 'error');
+          showStatus(result.error || 'Something went wrong!', 'error');
         }
       } catch (error) {
-        showStatus('Network error. Please try again later.', 'error');
+        showStatus('Network error. Please try again later!', 'error');
       } finally {
         // Restore State
         if (submitBtn) submitBtn.disabled = false;
