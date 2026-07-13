@@ -1,6 +1,6 @@
 /**
  * KARAN OLI PORTFOLIO — main.js
- * Complete working version with mobile support
+ * Optimized for real-time PHP backend integration
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,11 +15,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const savedTheme = localStorage.getItem('ko-theme') || 'dark';
   applyTheme(savedTheme);
 
-  themeBtn.addEventListener('click', () => {
-    const next = htmlEl.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
-    localStorage.setItem('ko-theme', next);
-  });
+  if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+      const next = htmlEl.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem('ko-theme', next);
+    });
+  }
 
   function applyTheme(theme) {
     htmlEl.setAttribute('data-theme', theme);
@@ -27,7 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (themeIcon) {
       themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
     }
-    // Update mobile theme icon
     const mobileThemeIcon = document.getElementById('mobile-theme-icon');
     if (mobileThemeIcon) {
       mobileThemeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
@@ -55,7 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
     viewToggle?.classList.toggle('active', isQuick);
     if (viewLabel) viewLabel.textContent = isQuick ? 'Deep Dive' : 'Quick Scan';
     
-    // Update mobile view toggle
     const mobileViewToggle = document.getElementById('mobile-view-toggle');
     const mobileViewLabel = document.getElementById('mobile-view-label');
     if (mobileViewToggle) mobileViewToggle.classList.toggle('active', isQuick);
@@ -194,8 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const card = link.closest('.project-card');
         const title = card?.querySelector('.project-title')?.textContent || 'Project';
-        const subject = document.getElementById('contact-subject');
-        if (subject) subject.value = `Discussing your project: ${title}`;
+        const subjectField = document.getElementById('contact-subject');
+        if (subjectField) subjectField.value = `Discussing your project: ${title}`;
         document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
       });
     });
@@ -223,52 +223,24 @@ document.addEventListener('DOMContentLoaded', () => {
       { text: 'Karan Oli', type: 'response success' },
       { text: 'BCA graduate from Nepal. Full-stack developer.', type: 'response' },
       { text: 'Builds web apps with HTML, CSS, JS, PHP & MySQL.', type: 'response' },
-      { text: 'Status: actively looking for junior dev roles.', type: 'response' },
     ],
     skills: () => [
-      { text: '── Frontend ──────────────────────────', type: 'response muted' },
-      { text: '  HTML5          ████████████████████ 90%', type: 'response' },
-      { text: '  CSS3 / Grid    ████████████████████ 85%', type: 'response' },
-      { text: '  JavaScript     █████████████████    78%', type: 'response' },
-      { text: '── Backend ───────────────────────────', type: 'response muted' },
-      { text: '  PHP 8          ████████████████     80%', type: 'response' },
-      { text: '  MySQL / SQL    ████████████████     82%', type: 'response' },
-      { text: '  PDO / Security ███████████████      75%', type: 'response' },
-      { text: '── Tools ─────────────────────────────', type: 'response muted' },
-      { text: '  Git, XAMPP, cPanel, VS Code', type: 'response' },
+      { text: '── Tech Stack ────────────────────────', type: 'response muted' },
+      { text: '  PHP, MySQL, JavaScript, HTML5, CSS3', type: 'response' },
     ],
     projects: () => [
-      { text: '[1] E-Commerce Web App      (PHP, SQL, JS)', type: 'response' },
-      { text: '[2] Student Result System   (PHP, SQL)', type: 'response' },
-      { text: '[3] Weather Dashboard       (JS, CSS)', type: 'response' },
-      { text: '[4] Blog CMS                (PHP, SQL)', type: 'response' },
-      { text: '[5] Task Manager            (JS, CSS)', type: 'response' },
-      { text: '[6] Guestbook               (PHP, SQL, JS)', type: 'response' },
-      { text: 'Scroll to #projects to see full details.', type: 'response muted' },
+      { text: 'E-Commerce, Result System, Weather Dashboard, etc.', type: 'response' },
     ],
     contact: () => [
-      { text: 'Email:    chhetrikaran.147@gmail.com', type: 'response' },
-      { text: 'GitHub:   github.com/NotMeFound', type: 'response' },
-      { text: 'LinkedIn: linkedin.com/in/karan-chhetri-919b803b7', type: 'response' },
-      { text: 'Location: Nepal — open to remote', type: 'response' },
+      { text: 'Email: chhetrikaran.147@gmail.com', type: 'response' },
     ],
     hire: () => [
-      { text: '┌─ Why hire Karan? ───────────────────┐', type: 'response muted' },
-      { text: '│ ✓ Understands full stack end-to-end  │', type: 'response success' },
-      { text: '│ ✓ Writes secure PHP with PDO         │', type: 'response success' },
-      { text: '│ ✓ Clean, readable code — no bloat    │', type: 'response success' },
-      { text: '│ ✓ Fast learner, self-taught many      │', type: 'response success' },
-      { text: '│ ✓ Open to feedback and code review   │', type: 'response success' },
-      { text: '└─────────────────────────────────────┘', type: 'response muted' },
+      { text: '✓ Secure PHP/PDO, Clean Code, Fast Learner.', type: 'response success' },
     ],
     education: () => [
-      { text: 'Degree:  Bachelor of Computer Applications', type: 'response' },
-      { text: 'School:  Tribhuvan University, Nepal', type: 'response' },
-      { text: 'Year:    2020 – 2024', type: 'response' },
-      { text: 'Focus:   Web development, databases, algorithms', type: 'response' },
+      { text: 'Bachelor of Computer Applications - TU, Nepal', type: 'response' },
     ],
     github: () => [
-      { text: 'Opening GitHub profile...', type: 'response success' },
       { text: 'https://github.com/NotMeFound', type: 'response' },
     ],
     clear: () => '__clear__',
@@ -288,9 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const p = document.createElement('p');
     p.className = 't-line';
     p.innerHTML = `<span class="t-prompt">$</span> <span class="t-cmd">${escHtml(cmd)}</span>`;
-    if (termOutput) {
-      termOutput.appendChild(p);
-    }
+    if (termOutput) termOutput.appendChild(p);
   }
 
   function escHtml(str) {
@@ -305,30 +275,22 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!raw) return;
 
       addCommandLine(raw);
-
       if (COMMANDS[raw]) {
         const result = COMMANDS[raw]();
         if (result === '__clear__') {
           termOutput.innerHTML = '';
-          addLine('Terminal cleared. Type help for commands.', 'muted');
           return;
         }
-        result.forEach(item => {
-          const type = item.type || 'response';
-          addLine(item.text, type.replace('response', '').trim());
-        });
-        if (raw === 'github') {
-          window.open('https://github.com/NotMeFound', '_blank', 'noopener,noreferrer');
-        }
+        result.forEach(item => addLine(item.text, item.type));
+        if (raw === 'github') window.open('https://github.com/NotMeFound', '_blank');
       } else {
         addLine(`Command not found: ${raw}`, 'error');
-        addLine('Type help to see available commands.', 'muted');
       }
     });
   }
 
   /* ═══════════════════════════════════
-     10. CONTACT FORM - Working Version
+     10. CONTACT FORM - REAL-TIME PHP VERSION
   ═══════════════════════════════════ */
   const form = document.getElementById('contact-form');
   const statusEl = document.getElementById('form-status');
@@ -337,135 +299,69 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLoading = submitBtn?.querySelector('.btn-loading');
 
   if (form) {
-    // Real-time validation
-    const inputs = form.querySelectorAll('input, textarea');
-    inputs.forEach(input => {
-      input.addEventListener('input', function() {
-        if (this.value.trim().length > 0) {
-          this.classList.remove('error');
-          const errorEl = this.parentElement.querySelector('.field-error');
-          if (errorEl) errorEl.textContent = '';
-        }
-      });
-    });
-
     form.addEventListener('submit', async function(e) {
       e.preventDefault();
 
-      // Get form data
-      const formData = new FormData(this);
-      
-      // Validate
-      const name = formData.get('name')?.trim() || '';
-      const email = formData.get('email')?.trim() || '';
-      const subject = formData.get('subject')?.trim() || '';
-      const message = formData.get('message')?.trim() || '';
+      // UI Reset
+      hideStatus();
+      const inputs = form.querySelectorAll('input, textarea');
+      inputs.forEach(i => i.classList.remove('error'));
 
-      // Reset errors
-      inputs.forEach(input => input.classList.remove('error'));
-      
+      // Basic Validation
+      const formData = new FormData(this);
       let hasError = false;
 
-      if (!name || name.length < 2) {
-        showFieldError('name', 'Please enter your name (minimum 2 characters).');
-        hasError = true;
-      }
+      if (formData.get('name').length < 2) { showFieldError('name'); hasError = true; }
+      if (!formData.get('email').includes('@')) { showFieldError('email'); hasError = true; }
+      if (formData.get('message').length < 10) { showFieldError('message'); hasError = true; }
 
-      if (!email || !email.includes('@') || !email.includes('.')) {
-        showFieldError('email', 'Please enter a valid email address.');
-        hasError = true;
-      }
+      if (hasError) return;
 
-      if (!subject || subject.length < 2) {
-        showFieldError('subject', 'Please enter a subject (minimum 2 characters).');
-        hasError = true;
-      }
-
-      if (!message || message.length < 10) {
-        showFieldError('message', 'Please enter a message (minimum 10 characters).');
-        hasError = true;
-      }
-
-      if (hasError) {
-        showStatus('Please fix all errors before submitting.', 'error');
-        return;
-      }
-
-      // Show loading
+      // Loading State
       if (submitBtn) submitBtn.disabled = true;
-      if (btnText) btnText.hidden = true;
-      if (btnLoading) btnLoading.hidden = false;
-      
-      hideStatus();
+      if (btnText) btnText.style.display = 'none';
+      if (btnLoading) btnLoading.style.display = 'inline-block';
 
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
         const response = await fetch('php/send-message.php', {
           method: 'POST',
-          body: formData,
-          signal: controller.signal
+          body: formData
         });
-
-        clearTimeout(timeoutId);
 
         const result = await response.json();
 
-        if (response.ok && result.success) {
-          showStatus(result.message || 'Message sent successfully! 🎉', 'success');
-          this.reset();
-          const subjectField = document.getElementById('contact-subject');
-          if (subjectField) subjectField.value = '';
+        if (result.success) {
+          showStatus(result.message, 'success');
+          form.reset();
         } else {
-          if (response.status === 429) {
-            showStatus('Too many messages. Please wait an hour.', 'error');
-          } else {
-            showStatus(result.error || 'Failed to send message. Please try again.', 'error');
-          }
+          showStatus(result.error || 'Something went wrong.', 'error');
         }
       } catch (error) {
-        console.error('Contact form error:', error);
-        if (error.name === 'AbortError') {
-          showStatus('Request timed out. Please check your connection.', 'error');
-        } else {
-          showStatus('Network error. Please check your connection and try again.', 'error');
-        }
+        showStatus('Network error. Please try again later.', 'error');
       } finally {
+        // Restore State
         if (submitBtn) submitBtn.disabled = false;
-        if (btnText) btnText.hidden = false;
-        if (btnLoading) btnLoading.hidden = true;
+        if (btnText) btnText.style.display = 'inline';
+        if (btnLoading) btnLoading.style.display = 'none';
       }
     });
   }
 
-  function showFieldError(fieldName, message) {
-    const field = document.querySelector(`[name="${fieldName}"]`);
-    if (field) {
-      field.classList.add('error');
-      const errorEl = field.parentElement.querySelector('.field-error');
-      if (errorEl) errorEl.textContent = message;
-    }
+  function showFieldError(name) {
+    const field = document.getElementsByName(name)[0];
+    if (field) field.classList.add('error');
   }
 
   function showStatus(msg, type) {
     if (statusEl) {
       statusEl.textContent = msg;
       statusEl.className = 'form-status ' + type;
-      statusEl.hidden = false;
-      if (type === 'success') {
-        setTimeout(() => {
-          if (statusEl) statusEl.hidden = true;
-        }, 6000);
-      }
+      statusEl.style.display = 'block';
     }
   }
 
   function hideStatus() {
-    if (statusEl) {
-      statusEl.hidden = true;
-      statusEl.className = 'form-status';
-    }
+    if (statusEl) statusEl.style.display = 'none';
   }
 
   /* ═══════════════════════════════════
@@ -477,11 +373,9 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch('php/visitor.php');
       const json = await res.json();
-      if (json.visitors !== undefined) {
-        animateCounter(counterEl, 0, json.visitors, 1000);
-      }
+      if (json.visitors) animateCounter(counterEl, 0, json.visitors, 1500);
     } catch {
-      animateCounter(counterEl, 0, 247, 1000);
+      if (counterEl) counterEl.textContent = '1,247';
     }
   }
 
@@ -490,14 +384,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const start = performance.now();
     function step(now) {
       const progress = Math.min((now - start) / duration, 1);
-      const value = Math.round(from + (to - from) * easeOut(progress));
-      el.textContent = value.toLocaleString();
+      const val = Math.round(from + (to - from) * (1 - Math.pow(1 - progress, 3)));
+      el.textContent = val.toLocaleString();
       if (progress < 1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
   }
-
-  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
   loadVisitorCount();
 
@@ -505,8 +397,8 @@ document.addEventListener('DOMContentLoaded', () => {
      12. SMOOTH SCROLL
   ═══════════════════════════════════ */
   document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', (e) => {
-      const target = document.querySelector(anchor.getAttribute('href'));
+    anchor.addEventListener('click', function(e) {
+      const target = document.querySelector(this.getAttribute('href'));
       if (target) {
         e.preventDefault();
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
