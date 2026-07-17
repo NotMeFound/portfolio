@@ -175,7 +175,7 @@ function sendWithPHPMailer($name, $email, $subject, $message) {
             </div>
         </div>
         <div class="footer">
-            <p>This message was sent from your portfolio contact form.</p>
+            <p>This message was sent from your portfolio Contact form.</p>
             <p>Reply directly to this email to respond to ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '.</p>
         </div>
     </div>
@@ -216,7 +216,7 @@ logAttempt($mailSent, $mailSent ? '' : $errorMessage);
 if ($mailSent) {
     echo json_encode([
         'success' => true,
-        'message' => '✅ Message sent successfully! I\'ll get back to you within 24 hours.'
+        'message' => '✅ Message sent successfully!! I\'ll get back to you within 24 hours.'
     ]);
 } else {
     http_response_code(500);
