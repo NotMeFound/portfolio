@@ -1,0 +1,10 @@
+# If your host lets you set the document root directly to /public,
+# do that instead and delete this file. This is a fallback for hosts
+# (e.g. shared cPanel) where you can only control the domain's root folder.
+
+RewriteEngine On
+RewriteRule ^(.*)$ public/$1 [L]
+
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
